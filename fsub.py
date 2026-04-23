@@ -2428,8 +2428,8 @@ async def show_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("📡 GRUP SUMBER", callback_data="admin_source_menu")
         ],
         [
-            InlineKeyboardButton("📢 BROADCAST", callback_data="broadcast_start"),
-            InlineKeyboardButton("📋 RIWAYAT BC", callback_data="broadcast_status")
+            InlineKeyboardButton("📢 BROADCAST", callback_data="admin_broadcast_menu"),
+            InlineKeyboardButton("📋 RIWAYAT BC", callback_data="admin_broadcast_history")
         ],
         [
             InlineKeyboardButton("🗑️ HAPUS VIDEO", callback_data="admin_delete_video"),
