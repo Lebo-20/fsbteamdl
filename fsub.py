@@ -4750,6 +4750,7 @@ def main():
     application.add_handler(CommandHandler("db", db_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("redeem", redeem_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("update", update_command, filters=filters.ChatType.PRIVATE))
+    application.add_handler(CommandHandler("listgroup", listgroup_command, filters=filters.ChatType.PRIVATE))
     
     # Broadcast commands
     application.add_handler(CommandHandler("broadcast", broadcast_command, filters=filters.ChatType.PRIVATE))
