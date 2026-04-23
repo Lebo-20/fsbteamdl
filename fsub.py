@@ -956,19 +956,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.commit()
                 
                 # Cek akses
-                can_access = video['access_type'] == 'FREE' or can_access_vip(user.id)
+                can_access = False
+                access_reason = "FREE"
+                
+                if is_admin(user.id) or is_vip_regular(user.id):
+                    can_access = True
+                    access_reason = "ADMIN_OR_VIP"
+                elif is_vip_limited(user.id):
+                    can_access = True
+                    access_reason = "VIP_LIMITED"
+                else:
+                    # User FREE - Berikan jatah 1 video per hari
+                    with get_db() as conn_check:
+                        cursor_check = conn_check.cursor()
+                        cursor_check.execute("""
+                            SELECT COUNT(*) as today_views FROM stats 
+                            WHERE user_id = ? AND action = 'VIEW' 
+                            AND timestamp >= date('now')
+                        """, (user.id,))
+                        today_views = cursor_check.fetchone()['today_views']
+                        
+                        if today_views < 1:
+                            can_access = True
+                            access_reason = "FREE_DAILY_QUOTA"
+                        else:
+                            can_access = False
+                            access_reason = "QUOTA_EXHAUSTED"
                 
                 if can_access:
                     # Catat statistik
-                    metadata = None
-                    if video['access_type'] == 'VIP' and is_vip_limited(user.id):
+                    metadata = access_reason
+                    if access_reason == "VIP_LIMITED":
                         # Kurangi sisa views untuk VIP Limited
                         cursor.execute("""
                             UPDATE users 
                             SET vip_limited_views = vip_limited_views + 1 
                             WHERE user_id = ?
                         """, (user.id,))
-                        metadata = "vip_limited"
                     
                     cursor.execute("""
                         INSERT INTO stats (video_id, user_id, action, metadata)
@@ -1000,9 +1024,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await update.message.reply_text("❌ Gagal mengirim video. Silakan coba lagi nanti.")
                         return
                 else:
-                    status = get_user_status(user.id)
-                    if status and status['vip_overall'] == 'LIMITED' and status.get('limited_views_left', 0) <= 0:
-                        text = "🔒 Kuota VIP Limited Anda telah habis!\n\nSilakan upgrade ke VIP Regular untuk akses tanpa batas."
+                    if access_reason == "QUOTA_EXHAUSTED":
+                        text = (
+                            "🔔 <b>JATAH HARIAN HABIS</b>\n\n"
+                            "Sebagai user gratis (FREE), Anda hanya mendapatkan jatah tonton <b>1 video per hari</b>.\n\n"
+                            "Ingin nonton sepuasnya tanpa batas?\n"
+                            "Silakan upgrade ke <b>VIP Regular</b> sekarang!"
+                        )
+                    elif is_vip_limited(user.id): # This case shouldn't be hit with can_access check above but for safety
+                         text = "🔒 Kuota VIP Limited Anda telah habis!\n\nSilakan upgrade ke VIP Regular untuk akses tanpa batas."
                     else:
                         text = "🔒 Video Ini Khusus Member VIP\n\nSilakan membeli akses VIP untuk menonton video ini."
                     
@@ -1738,6 +1768,9 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uploader_name = get_user_display_name(user)
     waktu_sekarang = datetime.now().strftime("%d-%m-%Y %H:%M")
     
+    # Tentukan akses type (Otomatis VIP jika dari sumber grup)
+    default_access = 'VIP' if is_from_source else 'FREE'
+    
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -1745,8 +1778,8 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 code, file_id, caption, file_type, 
                 uploaded_by, uploader_name, access_type, view_count
             )
-            VALUES (?, ?, ?, ?, ?, ?, 'FREE', 0)
-        """, (video_code, file_id, caption, file_type, user.id, uploader_name))
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+        """, (video_code, file_id, caption, file_type, user.id, uploader_name, default_access))
         video_id = cursor.lastrowid
         conn.commit()
         
@@ -1801,6 +1834,17 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     video_link = generate_video_link(video_code)
     
+    if is_from_source:
+        await update.message.reply_text(
+            f"✅ <b>Video Terdeteksi & Terdaftar!</b>\n\n"
+            f"🔗 Link: {video_link}\n"
+            f"📝 Judul: {caption}\n"
+            f"💎 Akses: <b>VIP (Otomatis)</b>\n"
+            f"📌 Kode: <code>{video_code}</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     await update.message.reply_text(
         f"✅ Video Berhasil Diupload!\n\n"
         f"🔗 Link Video:\n"
@@ -1878,6 +1922,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uploader_name = get_user_display_name(user)
     waktu_sekarang = datetime.now().strftime("%d-%m-%Y %H:%M")
     
+    # Tentukan akses type (Otomatis VIP jika dari sumber grup)
+    default_access = 'VIP' if is_from_source else 'FREE'
+    
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -1885,8 +1932,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 code, file_id, caption, file_type, 
                 uploaded_by, uploader_name, access_type, view_count
             )
-            VALUES (?, ?, ?, ?, ?, ?, 'FREE', 0)
-        """, (video_code, file_id, caption, file_type, user.id, uploader_name))
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+        """, (video_code, file_id, caption, file_type, user.id, uploader_name, default_access))
         video_id = cursor.lastrowid
         conn.commit()
         
