@@ -1,0 +1,2 @@
+# Format: ip:port:username:password
+# Contoh: 216.10.27.159:6837:username:password
