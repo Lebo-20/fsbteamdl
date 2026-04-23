@@ -2366,6 +2366,115 @@ async def process_broadcast(application: Application, broadcast_id: int):
         
         await asyncio.sleep(1)  # Delay antar batch
 
+async def show_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fungsi helper untuk menampilkan Panel Admin"""
+    query = update.callback_query
+    user = update.effective_user
+    
+    if not is_admin(user.id):
+        await query.answer("Anda bukan admin!")
+        return
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        # Statistik Dasar
+        cursor.execute("SELECT COUNT(*) as total FROM videos")
+        total_videos = cursor.fetchone()['total']
+        cursor.execute("SELECT COUNT(*) as total FROM users")
+        total_users = cursor.fetchone()['total']
+        cursor.execute("SELECT COUNT(*) as total FROM source_groups")
+        total_sources = cursor.fetchone()['total']
+        cursor.execute("SELECT COUNT(*) as total FROM payments WHERE status = 'PENDING'")
+        total_pending = cursor.fetchone()['total']
+        
+        # Statistik VIP
+        cursor.execute("SELECT COUNT(*) as total FROM users WHERE vip_until > datetime('now')")
+        active_vip_regular = cursor.fetchone()['total']
+        cursor.execute("SELECT COUNT(*) as total FROM users WHERE vip_limited_until > datetime('now')")
+        active_vip_limited = cursor.fetchone()['total']
+        
+        # Broadcast
+        cursor.execute("SELECT COUNT(*) as total FROM broadcasts WHERE status = 'PROCESSING'")
+        processing_broadcast = cursor.fetchone()['total']
+        
+    is_protected = (get_setting('protect_content') == 'ON')
+        
+    text = (
+        "⚙️ <b>PANEL ADMIN</b>\n\n"
+        f"📊 <b>Statistik:</b>\n"
+        f"• 🎬 Total Video: <b>{total_videos}</b>\n"
+        f"• 👤 Total User: <b>{total_users}</b>\n"
+        f"• 💎 VIP Regular: <b>{active_vip_regular}</b>\n"
+        f"• 🔰 VIP Limited: <b>{active_vip_limited}</b>\n\n"
+        f"💳 <b>Transaksi:</b>\n"
+        f"• 💰 Pending: <b>{total_pending}</b>\n"
+        f"• 📢 Broadcast Jalan: <b>{processing_broadcast}</b>\n\n"
+        f"📡 Grup Sumber: <b>{total_sources}</b>\n"
+        f"🛡️ Proteksi Konten: <b>{'ON' if is_protected else 'OFF'}</b>\n\n"
+        "Silakan pilih menu di bawah ini:"
+    )
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("👥 CEK USER", callback_data="admin_check_user"),
+            InlineKeyboardButton("📊 STATISTIK", callback_data="admin_stats")
+        ],
+        [
+            InlineKeyboardButton("💰 BAYAR PENDING", callback_data="admin_pending_payments"),
+            InlineKeyboardButton("🎟️ KODE REDEEM", callback_data="admin_redeem_menu")
+        ],
+        [
+            InlineKeyboardButton("🔥 STATUS DB", callback_data="admin_db_status"),
+            InlineKeyboardButton("📡 GRUP SUMBER", callback_data="admin_source_menu")
+        ],
+        [
+            InlineKeyboardButton("📢 BROADCAST", callback_data="broadcast_start"),
+            InlineKeyboardButton("📋 RIWAYAT BC", callback_data="broadcast_status")
+        ],
+        [
+            InlineKeyboardButton("🗑️ HAPUS VIDEO", callback_data="admin_delete_video"),
+            InlineKeyboardButton("🛡️ PRIVASI: " + ("ON" if is_protected else "OFF"), callback_data="admin_toggle_privacy")
+        ],
+        [
+            InlineKeyboardButton("🔄 UPDATE BOT", callback_data="admin_update_bot"),
+            InlineKeyboardButton("🔙 TUTUP PANEL", callback_data="back_main")
+        ]
+    ]
+    await safe_edit_message(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def show_source_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fungsi helper untuk menampilkan Menu Grup Sumber"""
+    query = update.callback_query
+    user = update.effective_user
+    
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM source_groups")
+        sources = cursor.fetchall()
+        
+    source_list = ""
+    if sources:
+        for s in sources:
+            status_admin = "✅ Admin" if s['is_active'] else "❌ Bukan Admin"
+            source_list += f"📍 <b>{s['title'] or 'Grup'}</b>\n   └ ID: <code>{s['chat_id']}</code> | {status_admin}\n"
+    else:
+        source_list = "<i>Belum ada grup sumber terdaftar.</i>\n"
+        
+    text = (
+        "📡 <b>MANAJEMEN GRUP SUMBER</b>\n\n"
+        "Bot akan membaca video otomatis dari grup/topik di bawah ini:\n\n"
+        f"{source_list}\n"
+        "ℹ️ Tambahkan grup dengan link (pastikan bot sudah jadi admin)."
+    )
+    keyboard = [
+        [
+            InlineKeyboardButton("➕ Tambah Grup", callback_data="admin_source_add"),
+            InlineKeyboardButton("🗑️ Hapus Grup", callback_data="admin_source_del_menu")
+        ],
+        [InlineKeyboardButton("🔙 Kembali ke Panel", callback_data="admin_panel")]
+    ]
+    await safe_edit_message(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
 # ===================== CALLBACK HANDLERS =====================
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk semua callback"""
@@ -3034,101 +3143,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
     
     elif data == "admin_panel" and is_admin(user.id):
-        with get_db() as conn:
-            cursor = conn.cursor()
-            # Statistik Dasar
-            cursor.execute("SELECT COUNT(*) as total FROM videos")
-            total_videos = cursor.fetchone()['total']
-            cursor.execute("SELECT COUNT(*) as total FROM users")
-            total_users = cursor.fetchone()['total']
-            cursor.execute("SELECT COUNT(*) as total FROM source_groups")
-            total_sources = cursor.fetchone()['total']
-            cursor.execute("SELECT COUNT(*) as total FROM payments WHERE status = 'PENDING'")
-            total_pending = cursor.fetchone()['total']
-            
-            # Statistik VIP
-            cursor.execute("SELECT COUNT(*) as total FROM users WHERE vip_until > datetime('now')")
-            active_vip_regular = cursor.fetchone()['total']
-            cursor.execute("SELECT COUNT(*) as total FROM users WHERE vip_limited_until > datetime('now')")
-            active_vip_limited = cursor.fetchone()['total']
-            
-            # Broadcast
-            cursor.execute("SELECT COUNT(*) as total FROM broadcasts WHERE status = 'PROCESSING'")
-            processing_broadcast = cursor.fetchone()['total']
-            
-        is_protected = (get_setting('protect_content') == 'ON')
-            
-        text = (
-            "⚙️ <b>PANEL ADMIN</b>\n\n"
-            f"📊 <b>Statistik:</b>\n"
-            f"• 🎬 Total Video: <b>{total_videos}</b>\n"
-            f"• 👤 Total User: <b>{total_users}</b>\n"
-            f"• 💎 VIP Regular: <b>{active_vip_regular}</b>\n"
-            f"• 🔰 VIP Limited: <b>{active_vip_limited}</b>\n\n"
-            f"💳 <b>Transaksi:</b>\n"
-            f"• 💰 Pending: <b>{total_pending}</b>\n"
-            f"• 📢 Broadcast Jalan: <b>{processing_broadcast}</b>\n\n"
-            f"📡 Grup Sumber: <b>{total_sources}</b>\n"
-            f"🛡️ Proteksi Konten: <b>{'ON' if is_protected else 'OFF'}</b>\n\n"
-            "Silakan pilih menu di bawah ini:"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("👥 CEK USER", callback_data="admin_check_user"),
-                InlineKeyboardButton("📊 STATISTIK", callback_data="admin_stats")
-            ],
-            [
-                InlineKeyboardButton("💰 BAYAR PENDING", callback_data="admin_pending_payments"),
-                InlineKeyboardButton("🎟️ KODE REDEEM", callback_data="admin_redeem_menu")
-            ],
-            [
-                InlineKeyboardButton("🔥 STATUS DB", callback_data="admin_db_status"),
-                InlineKeyboardButton("📡 GRUP SUMBER", callback_data="admin_source_menu")
-            ],
-            [
-                InlineKeyboardButton("📢 BROADCAST", callback_data="broadcast_start"),
-                InlineKeyboardButton("📋 RIWAYAT BC", callback_data="broadcast_status")
-            ],
-            [
-                InlineKeyboardButton("🗑️ HAPUS VIDEO", callback_data="admin_delete_video"),
-                InlineKeyboardButton("🛡️ PRIVASI: " + ("ON" if is_protected else "OFF"), callback_data="admin_toggle_privacy")
-            ],
-            [
-                InlineKeyboardButton("🔄 UPDATE BOT", callback_data="admin_update_bot"),
-                InlineKeyboardButton("🔙 TUTUP PANEL", callback_data="back_main")
-            ]
-        ]
-        await safe_edit_message(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await show_admin_panel(update, context)
 
     elif data == "admin_source_menu" and is_admin(user.id):
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM source_groups")
-            sources = cursor.fetchall()
-            
-        source_list = ""
-        if sources:
-            for s in sources:
-                status_admin = "✅ Admin" if s['is_active'] else "❌ Bukan Admin"
-                source_list += f"📍 <b>{s['title'] or 'Grup'}</b>\n   └ ID: <code>{s['chat_id']}</code> | {status_admin}\n"
-        else:
-            source_list = "<i>Belum ada grup sumber terdaftar.</i>\n"
-            
-        text = (
-            "📡 <b>MANAJEMEN GRUP SUMBER</b>\n\n"
-            "Bot akan membaca video otomatis dari grup/topik di bawah ini:\n\n"
-            f"{source_list}\n"
-            "ℹ️ Tambahkan grup dengan link (pastikan bot sudah jadi admin)."
-        )
-        keyboard = [
-            [
-                InlineKeyboardButton("➕ Tambah Grup", callback_data="admin_source_add"),
-                InlineKeyboardButton("🗑️ Hapus Grup", callback_data="admin_source_del_menu")
-            ],
-            [InlineKeyboardButton("🔙 Kembali ke Panel", callback_data="admin_panel")]
-        ]
-        await safe_edit_message(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await show_source_menu(update, context)
 
     elif data == "admin_source_add" and is_admin(user.id):
         context.user_data['admin_mode'] = 'waiting_source_link'
@@ -3195,8 +3213,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
         await query.answer("✅ Grup berhasil dihapus!")
         # Kembali ke menu manajemen grup
-        query.data = "admin_source_menu"
-        await button_callback(update, context)
+        await show_source_menu(update, context)
 
     elif data == "admin_delete_video" and is_admin(user.id):
         context.user_data['admin_mode'] = 'waiting_delete_video'
@@ -3269,8 +3286,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer(f"🛡️ Proteksi Konten: {new_status}", show_alert=True)
         
         # Trigger refresh admin panel secara manual
-        query.data = "admin_panel"
-        await button_callback(update, context)
+        await show_admin_panel(update, context)
     
     elif data == "admin_check_user" and is_admin(user.id):
         context.user_data["admin_mode"] = "waiting_user_id"
