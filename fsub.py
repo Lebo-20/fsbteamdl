@@ -1707,7 +1707,7 @@ async def search_again_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 # ===================== VIDEO HANDLERS =====================
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler untuk upload video (admin atau grup sumber)"""
+    """Handler untuk upload video (Admin, Bot, atau Grup Sumber)"""
     user = update.effective_user
     chat_id = update.effective_chat.id
     
@@ -1717,8 +1717,6 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     with get_db() as conn:
         cursor = conn.cursor()
-        # Jika thread_id ada, cek kombinasi chat_id + thread_id
-        # Jika tidak ada thread_id, cek chat_id yang thread_id-nya NULL
         if thread_id:
             cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND thread_id = ? AND is_active = 1", (chat_id, thread_id))
         else:
@@ -1727,8 +1725,13 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if cursor.fetchone():
             is_from_source = True
             
-    if not is_admin(user.id) and not is_from_source:
-        return
+    # Cek izin pengirim (Hanya Admin dan Bot)
+    is_admin_user = is_admin(user.id if user else 0)
+    is_sender_bot = user.is_bot if user else False
+    
+    if not is_admin_user:
+        if not is_from_source or not is_sender_bot:
+            return
     
     if update.message.video:
         file_id = update.message.video.file_id
@@ -1881,8 +1884,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if cursor.fetchone():
             is_from_source = True
 
-    if not is_admin(user.id) and not is_from_source:
-        return
+    # Cek izin pengirim (Hanya Admin dan Bot)
+    is_admin_user = is_admin(user.id if user else 0)
+    is_sender_bot = user.is_bot if user else False
+    
+    if not is_admin_user:
+        if not is_from_source or not is_sender_bot:
+            return
     
     if update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith('video/'):
         file_id = update.message.document.file_id
