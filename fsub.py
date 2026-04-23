@@ -2455,8 +2455,9 @@ async def show_source_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source_list = ""
     if sources:
         for s in sources:
-            status_admin = "✅ Admin" if s['is_active'] else "❌ Bukan Admin"
-            source_list += f"📍 <b>{s['title'] or 'Grup'}</b>\n   └ ID: <code>{s['chat_id']}</code> | {status_admin}\n"
+            status_admin = "✅ Active" if s['is_active'] else "❌ Inactive"
+            topic_info = f" [Topik: {s['thread_id']}]" if s['thread_id'] else ""
+            source_list += f"📍 <b>{s['title'] or 'Grup'}</b>{topic_info}\n   └ ID: <code>{s['chat_id']}</code> | {status_admin}\n"
     else:
         source_list = "<i>Belum ada grup sumber terdaftar.</i>\n"
         
@@ -2464,7 +2465,7 @@ async def show_source_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📡 <b>MANAJEMEN GRUP SUMBER</b>\n\n"
         "Bot akan membaca video otomatis dari grup/topik di bawah ini:\n\n"
         f"{source_list}\n"
-        "ℹ️ Tambahkan grup dengan link (pastikan bot sudah jadi admin)."
+        "ℹ️ Gunakan /listgroup untuk daftar lebih detail."
     )
     keyboard = [
         [
@@ -3172,12 +3173,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         keyboard = []
         for s in sources:
-            # Tampilkan tombol untuk tiap grup
-            keyboard.append([InlineKeyboardButton(f"📍 {s['title'] or s['chat_id']}", callback_data=f"admin_source_del_ask_{s['id']}")])
+            # Tampilkan tombol untuk tiap grup dan topik
+            topic_tag = f" [Topic: {s['thread_id']}]" if s['thread_id'] else ""
+            label = f"📍 {s['title'] or s['chat_id']}{topic_tag}"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"admin_source_del_ask_{s['id']}")])
         
         keyboard.append([InlineKeyboardButton("🔙 Kembali", callback_data="admin_source_menu")])
         
-        await safe_edit_message(query, "🗑️ <b>PILIH GRUP UNTUK DIHAPUS</b>\n\nKlik pada nama grup yang ingin Anda hapus dari daftar pemantauan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await safe_edit_message(query, "🗑️ <b>PILIH GRUP/TOPIK UNTUK DIHAPUS</b>\n\nKlik pada grup atau topik spesifik yang ingin Anda hapus:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
     elif data.startswith("admin_source_del_ask_") and is_admin(user.id):
         source_id = int(data.split("_")[-1])
@@ -4551,6 +4554,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML
             )
             return
+
+# ===================== ADMIN COMMANDS =====================
+async def listgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk perintah /listgroup - Melihat daftar grup sumber (Admin Only)"""
+    user = update.effective_user
+    if not is_admin(user.id):
+        return
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM source_groups ORDER BY created_at DESC")
+        sources = cursor.fetchall()
+
+    if not sources:
+        await update.message.reply_text("❌ Belum ada grup atau topik yang terdaftar.")
+        return
+
+    text = "📡 <b>DAFTAR GRUP SUMBER</b>\n\n"
+    for i, s in enumerate(sources, 1):
+        topic_str = f" | Topik ID: <code>{s['thread_id']}</code>" if s['thread_id'] else " | (Grup Biasa)"
+        text += f"{i}. 📍 <b>{s['title'] or 'Tanpa Judul'}</b>\n"
+        text += f"   🆔 ID: <code>{s['chat_id']}</code>{topic_str}\n"
+        text += f"   🔗 Link: {s['link'] or '-'}\n\n"
+
+    keyboard = [[InlineKeyboardButton("⚙️ MANAJEMEN GRUP", callback_data="admin_source_menu")]]
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
 # ===================== HANDLER CANCEL =====================
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
