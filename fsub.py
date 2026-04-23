@@ -254,14 +254,15 @@ def init_database():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS source_groups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id INTEGER UNIQUE NOT NULL,
+                chat_id INTEGER NOT NULL,
                 thread_id INTEGER,
                 title TEXT,
                 link TEXT,
                 status TEXT DEFAULT 'ACTIVE',
                 is_active INTEGER DEFAULT 1,
                 last_read TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(chat_id, thread_id)
             )
         ''')
         
@@ -292,6 +293,51 @@ def init_database():
                 cursor.execute("ALTER TABLE source_groups ADD COLUMN last_read TIMESTAMP")
                 logger.info("Kolom last_read berhasil ditambahkan ke source_groups")
             except: pass
+
+        # MIGRASI: Hapus UNIQUE chat_id jika masih ada
+        try:
+            cursor.execute("PRAGMA index_list(source_groups)")
+            indexes = cursor.fetchall()
+            has_old_unique = False
+            for idx in indexes:
+                if idx['unique'] == 1 and idx['name'].startswith('sqlite_autoindex_source_groups'):
+                    has_old_unique = True
+                    break
+            
+            if has_old_unique:
+                logger.info("Memperbarui skema source_groups untuk mendukung multi-topik...")
+                # Backup data
+                cursor.execute("SELECT * FROM source_groups")
+                old_data = cursor.fetchall()
+                
+                # Recreate table
+                cursor.execute("DROP TABLE source_groups")
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS source_groups (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        chat_id INTEGER NOT NULL,
+                        thread_id INTEGER,
+                        title TEXT,
+                        link TEXT,
+                        status TEXT DEFAULT 'ACTIVE',
+                        is_active INTEGER DEFAULT 1,
+                        last_read TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(chat_id, thread_id)
+                    )
+                ''')
+                
+                # Restore data (be careful with duplicates)
+                for row in old_data:
+                    try:
+                        cursor.execute("""
+                            INSERT INTO source_groups (id, chat_id, thread_id, title, link, status, is_active, last_read, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, tuple(row))
+                    except: pass
+                logger.info("Skema source_groups berhasil diperbarui!")
+        except Exception as e:
+            logger.error(f"Gagal migrasi skema source_groups: {e}")
 
         # Tabel settings untuk pengaturan global bot
         cursor.execute('''
@@ -1637,9 +1683,17 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Cek apakah dari grup sumber terdaftar
     is_from_source = False
+    thread_id = update.message.message_thread_id
+    
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND is_active = 1", (chat_id,))
+        # Jika thread_id ada, cek kombinasi chat_id + thread_id
+        # Jika tidak ada thread_id, cek chat_id yang thread_id-nya NULL
+        if thread_id:
+            cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND thread_id = ? AND is_active = 1", (chat_id, thread_id))
+        else:
+            cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND (thread_id IS NULL OR thread_id = 0) AND is_active = 1", (chat_id,))
+            
         if cursor.fetchone():
             is_from_source = True
             
@@ -1771,9 +1825,15 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Cek apakah dari grup sumber terdaftar
     is_from_source = False
+    thread_id = update.message.message_thread_id
+    
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND is_active = 1", (chat_id,))
+        if thread_id:
+            cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND thread_id = ? AND is_active = 1", (chat_id, thread_id))
+        else:
+            cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND (thread_id IS NULL OR thread_id = 0) AND is_active = 1", (chat_id,))
+            
         if cursor.fetchone():
             is_from_source = True
 
