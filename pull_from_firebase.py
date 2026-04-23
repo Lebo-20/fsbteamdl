@@ -33,19 +33,32 @@ db_sq = sqlite3.connect(DATABASE_FILE)
 db_sq.row_factory = sqlite3.Row
 cursor = db_sq.cursor()
 
+def get_table_columns(table_name):
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    return [column['name'] for column in cursor.fetchall()]
+
 def pull_collection(collection_name, table_name):
     logger.info(f"[{collection_name.upper()}] Menarik data dari Firebase...")
+    
+    # Ambil kolom yang ada di SQLite
+    allowed_columns = get_table_columns(table_name)
+    logger.info(f"  Kolom yang didukung di VPS: {', '.join(allowed_columns)}")
+    
     docs = db_fb.collection(collection_name).stream()
     
     count = 0
     for doc in docs:
-        data = doc.to_dict()
+        raw_data = doc.to_dict()
+        data = {}
         
-        # Hilangkan field yang tidak ada di SQLite jika perlu (migrated_at, last_synced)
-        keys_to_remove = ['migrated_at', 'last_synced', 'bot_link', 'active_bot']
-        for key in keys_to_remove:
-            data.pop(key, None)
-            
+        # Hanya ambil data yang kolomnya ada di SQLite
+        for key, value in raw_data.items():
+            if key in allowed_columns:
+                data[key] = value
+        
+        if not data:
+            continue
+
         # Bersihkan data (convert timestamp Firestore ke ISO string untuk SQLite)
         for k, v in data.items():
             if hasattr(v, 'isoformat'): # Jika objek datetime/Timestamp
