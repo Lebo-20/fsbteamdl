@@ -1725,13 +1725,10 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if cursor.fetchone():
             is_from_source = True
             
-    # Cek izin pengirim (Hanya Admin dan Bot)
-    is_admin_user = is_admin(user.id if user else 0)
-    is_sender_bot = user.is_bot if user else False
-    
-    if not is_admin_user:
-        if not is_from_source or not is_sender_bot:
-            return
+    # Cek izin pengirim
+    # Jika berasal dari sumber grup terdaftar ATAU pengirim adalah Admin, maka proses
+    if not is_from_source and not is_admin(user.id if user else 0):
+        return
     
     if update.message.video:
         file_id = update.message.video.file_id
@@ -1884,13 +1881,10 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if cursor.fetchone():
             is_from_source = True
 
-    # Cek izin pengirim (Hanya Admin dan Bot)
-    is_admin_user = is_admin(user.id if user else 0)
-    is_sender_bot = user.is_bot if user else False
-    
-    if not is_admin_user:
-        if not is_from_source or not is_sender_bot:
-            return
+    # Cek izin pengirim
+    # Jika berasal dari sumber grup terdaftar ATAU pengirim adalah Admin, maka proses
+    if not is_from_source and not is_admin(user.id if user else 0):
+        return
     
     if update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith('video/'):
         file_id = update.message.document.file_id
