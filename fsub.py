@@ -1373,7 +1373,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         text = "🔒 Video Ini Khusus Member VIP\n\nSilakan membeli akses VIP untuk menonton video ini."
                     
                     keyboard = [[InlineKeyboardButton("💎 Beli VIP", callback_data="buy_vip")]]
-                    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+                    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
                     return
             else:
                 await update.message.reply_text("❌ Video Tidak Ditemukan\n\nKode yang Anda masukkan tidak valid atau video telah dihapus.")
