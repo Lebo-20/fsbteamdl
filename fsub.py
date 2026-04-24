@@ -797,6 +797,201 @@ async def db_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
+# ===================== /cekuser - CEK STATUS USER =====================
+async def cekuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk perintah /cekuser - mengecek status user (admin only)"""
+    user = update.effective_user
+    
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ Perintah ini hanya untuk admin!")
+        return
+        
+    if not context.args or len(context.args) == 0:
+        await update.message.reply_text("ℹ️ Penggunaan: /cekuser <user_id>")
+        return
+        
+    try:
+        target_user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ User ID harus berupa angka!")
+        return
+        
+    status = get_user_status(target_user_id)
+    
+    if not status:
+        await update.message.reply_text(f"❌ Data user dengan ID {target_user_id} tidak ditemukan di database.")
+        return
+    
+    pending_text = ""
+    if status.get('pending_payments', 0) > 0:
+        pending_text = f"\n⏳ Pembayaran Pending: {status['pending_payments']}"
+    
+    if status.get('vip_overall') == 'REGULAR':
+        message = (
+            f"👤 STATUS USER\n\n"
+            f"🆔 User ID: {status['user_id']}\n"
+            f"📛 Nama: {status.get('first_name', 'Tidak diketahui')}\n"
+            f"📱 Username: @{status.get('username') or 'None'}\n\n"
+            f"{status.get('vip_icon', '💎')} Status VIP: REGULAR AKTIF\n"
+            f"💎 Tipe: VIP Regular (Full Akses)\n"
+            f"📅 Berlaku sampai: {status.get('expiry_date', '-')}\n"
+            f"⏳ Sisa waktu: {status.get('days_left', 0)} hari {status.get('hours_left', 0)} jam\n"
+            f"{pending_text}"
+        )
+    elif status.get('vip_overall') == 'LIMITED':
+        total_views = status.get('vip_limited_total_views', 2)
+        views_left = status.get('limited_views_left', 0)
+        message = (
+            f"👤 STATUS USER\n\n"
+            f"🆔 User ID: {status['user_id']}\n"
+            f"📛 Nama: {status.get('first_name', 'Tidak diketahui')}\n"
+            f"📱 Username: @{status.get('username') or 'None'}\n\n"
+            f"{status.get('vip_limited_icon', '🔰')} Status VIP: LIMITED AKTIF\n"
+            f"🔰 Tipe: VIP Limited ({total_views}x Lihat)\n"
+            f"📅 Berlaku sampai: {status.get('limited_expiry_date', '-')}\n"
+            f"⏳ Sisa waktu: {status.get('limited_days_left', 0)} hari {status.get('limited_hours_left', 0)} jam\n"
+            f"👁 Sisa kuota lihat: {views_left} dari {total_views} kali\n"
+            f"{pending_text}"
+        )
+    else:
+        message = (
+            f"👤 STATUS USER\n\n"
+            f"🆔 User ID: {status['user_id']}\n"
+            f"📛 Nama: {status.get('first_name', 'Tidak diketahui')}\n"
+            f"📱 Username: @{status.get('username') or 'None'}\n\n"
+            f"❌ Status VIP: TIDAK AKTIF\n"
+            f"💎 Tipe: Free User\n"
+            f"{pending_text}"
+        )
+        
+    await update.message.reply_text(message)
+
+# ===================== /addvip - TAMBAH VIP MANUAL =====================
+async def addvip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk perintah /addvip - menambah VIP manual (admin only)"""
+    user = update.effective_user
+    
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ Perintah ini hanya untuk admin!")
+        return
+        
+    # Format: /addvip <user_id> <hari> [tipe: regular/limited]
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "ℹ️ <b>Penggunaan:</b>\n"
+            "<code>/addvip <user_id> <hari> [tipe]</code>\n\n"
+            "<b>Contoh:</b>\n"
+            "<code>/addvip 123456789 30</code> (Tambah 30 hari VIP Regular)\n"
+            "<code>/addvip 123456789 3 limited</code> (Tambah 3 hari VIP Limited)",
+            parse_mode=ParseMode.HTML
+        )
+        return
+        
+    try:
+        target_user_id = int(context.args[0])
+        days = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ User ID dan Hari harus berupa angka!")
+        return
+        
+    vip_type = "regular"
+    if len(context.args) > 2:
+        vip_type = context.args[2].lower()
+        if vip_type not in ["regular", "limited"]:
+            await update.message.reply_text("❌ Tipe VIP hanya bisa 'regular' atau 'limited'!")
+            return
+
+    # Pastikan user ada di DB
+    target_user = get_user_status(target_user_id)
+    if not target_user:
+        get_user_or_create(target_user_id)
+        target_user = get_user_status(target_user_id)
+        
+    now = datetime.now()
+    
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        if vip_type == "regular":
+            if target_user.get('vip_until'):
+                try:
+                    current_vip = datetime.fromisoformat(target_user['vip_until'])
+                    if current_vip < now:
+                        new_vip = now + timedelta(days=days)
+                    else:
+                        new_vip = current_vip + timedelta(days=days)
+                except:
+                    new_vip = now + timedelta(days=days)
+            else:
+                new_vip = now + timedelta(days=days)
+                
+            cursor.execute("UPDATE users SET vip_until = ? WHERE user_id = ?", (new_vip.isoformat(), target_user_id))
+            conn.commit()
+            
+            try:
+                import firebase_sync
+                firebase_sync.sync_user_vip_regular(target_user_id, new_vip.isoformat())
+            except:
+                pass
+            
+            tipe_text = "VIP Regular (Full Akses)"
+            berlaku_text = new_vip.strftime('%d %B %Y %H:%M')
+            
+        else: # limited
+            if target_user.get('vip_limited_until'):
+                try:
+                    current_vip = datetime.fromisoformat(target_user['vip_limited_until'])
+                    if current_vip < now:
+                        new_vip = now + timedelta(days=days)
+                    else:
+                        new_vip = current_vip + timedelta(days=days)
+                except:
+                    new_vip = now + timedelta(days=days)
+            else:
+                new_vip = now + timedelta(days=days)
+                
+            # Default views: 1 hari = 2 views, 3 hari = 6 views
+            views_to_add = days * 2
+            current_views = target_user.get('vip_limited_total_views', 2)
+            
+            cursor.execute("UPDATE users SET vip_limited_until = ?, vip_limited_views = 0, vip_limited_total_views = ? WHERE user_id = ?", 
+                          (new_vip.isoformat(), views_to_add, target_user_id))
+            conn.commit()
+            
+            try:
+                import firebase_sync
+                firebase_sync.sync_user_vip_limited(target_user_id, new_vip.isoformat(), 0, views_to_add)
+            except:
+                pass
+                
+            tipe_text = f"VIP Limited ({views_to_add}x Lihat)"
+            berlaku_text = new_vip.strftime('%d %B %Y %H:%M')
+
+    await update.message.reply_text(
+        f"✅ <b>Berhasil Menambahkan VIP!</b>\n\n"
+        f"👤 User ID: <code>{target_user_id}</code>\n"
+        f"💎 Tipe: {tipe_text}\n"
+        f"⏳ Durasi: {days} Hari\n"
+        f"📅 Berlaku sampai: {berlaku_text}",
+        parse_mode=ParseMode.HTML
+    )
+    
+    try:
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=(
+                f"🎉 <b>SELAMAT! ANDA MENDAPATKAN VIP</b>\n\n"
+                f"Admin telah menambahkan VIP ke akun Anda.\n\n"
+                f"💎 Tipe: {tipe_text}\n"
+                f"⏳ Tambahan Waktu: {days} Hari\n"
+                f"📅 Berlaku sampai: {berlaku_text}\n\n"
+                f"Ketik /status untuk mengecek membership Anda."
+            ),
+            parse_mode=ParseMode.HTML
+        )
+    except:
+        pass
+
 # ===================== /redeem - REDEEM KODE VIP =====================
 async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk perintah /redeem KODE - user menukarkan kode VIP"""
@@ -4857,6 +5052,8 @@ def main():
     application.add_handler(CommandHandler("search", search_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("hapus", hapus_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("db", db_command, filters=filters.ChatType.PRIVATE))
+    application.add_handler(CommandHandler("cekuser", cekuser_command, filters=filters.ChatType.PRIVATE))
+    application.add_handler(CommandHandler("addvip", addvip_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("redeem", redeem_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("update", update_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("listgroup", listgroup_command, filters=filters.ChatType.PRIVATE))
