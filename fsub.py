@@ -2082,15 +2082,19 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if caption != "Tanpa Judul":
         existing_video = get_video_by_caption(caption)
         if existing_video:
-            video_link = generate_video_link(existing_video['code'])
-            await update.message.reply_text(
-                f"⚠️ *Judul sudah terdaftar!*\n\n"
-                f"Judul: `{caption}`\n"
-                f"Status: Sudah ada di database\n\n"
-                f"🔗 Link: {video_link}",
-                parse_mode=ParseMode.MARKDOWN
-            )
-            return
+            if is_from_source:
+                logger.info(f"Source Group: Judul '{caption}' sudah terdaftar, melewati (silently ignore)...")
+                return
+            else:
+                video_link = generate_video_link(existing_video['code'])
+                await update.message.reply_text(
+                    f"⚠️ *Judul sudah terdaftar!*\n\n"
+                    f"Judul: `{caption}`\n"
+                    f"Status: Sudah ada di database\n\n"
+                    f"🔗 Link: {video_link}",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
             
     video_code = generate_video_code()
     while True:
@@ -2238,15 +2242,19 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if caption != "Tanpa Judul":
         existing_video = get_video_by_caption(caption)
         if existing_video:
-            video_link = generate_video_link(existing_video['code'])
-            await update.message.reply_text(
-                f"⚠️ *Judul sudah terdaftar!*\n\n"
-                f"Judul: `{caption}`\n"
-                f"Status: Sudah ada di database\n\n"
-                f"🔗 Link: {video_link}",
-                parse_mode=ParseMode.MARKDOWN
-            )
-            return
+            if is_from_source:
+                logger.info(f"Source Group: Judul document '{caption}' sudah terdaftar, melewati (silently ignore)...")
+                return
+            else:
+                video_link = generate_video_link(existing_video['code'])
+                await update.message.reply_text(
+                    f"⚠️ *Judul sudah terdaftar!*\n\n"
+                    f"Judul: `{caption}`\n"
+                    f"Status: Sudah ada di database\n\n"
+                    f"🔗 Link: {video_link}",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
             
     video_code = generate_video_code()
     while True:
