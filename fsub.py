@@ -2054,7 +2054,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with get_db() as conn:
         cursor = conn.cursor()
         if thread_id:
-            cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND thread_id = ? AND is_active = 1", (chat_id, thread_id))
+            cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND (thread_id = ? OR thread_id IS NULL OR thread_id = 0) AND is_active = 1", (chat_id, thread_id))
         else:
             cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND (thread_id IS NULL OR thread_id = 0) AND is_active = 1", (chat_id,))
             
@@ -2210,7 +2210,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with get_db() as conn:
         cursor = conn.cursor()
         if thread_id:
-            cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND thread_id = ? AND is_active = 1", (chat_id, thread_id))
+            cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND (thread_id = ? OR thread_id IS NULL OR thread_id = 0) AND is_active = 1", (chat_id, thread_id))
         else:
             cursor.execute("SELECT id FROM source_groups WHERE chat_id = ? AND (thread_id IS NULL OR thread_id = 0) AND is_active = 1", (chat_id,))
             
