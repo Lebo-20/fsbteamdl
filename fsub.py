@@ -4617,6 +4617,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Gagal mengirim pesan: {e}")
         return
 
+    # CEK STATE WAITING CHECK USER (BARU)
+    if context.user_data.get('admin_mode') == 'waiting_user_id' and is_admin(user.id):
+        target_id_str = update.message.text.strip()
+        context.user_data.pop('admin_mode', None)
+        
+        try:
+            # Panggil fungsi cekuser yang sudah kita buat sebelumnya
+            context.args = [target_id_str]
+            await cekuser_command(update, context)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Gagal memproses ID: {e}")
+        return
+
     # CEK STATE WAITING DELETE VIDEO
     if context.user_data.get('admin_mode') == 'waiting_delete_video' and is_admin(user.id):
         keyword = update.message.text.strip()
@@ -5088,6 +5101,7 @@ def main():
     application.add_handler(CommandHandler("cekuser", cekuser_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("addvip", addvip_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("tarikdata", tarikdata_command, filters=filters.ChatType.PRIVATE))
+    application.add_handler(CommandHandler("sync_db", tarikdata_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("redeem", redeem_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("update", update_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("listgroup", listgroup_command, filters=filters.ChatType.PRIVATE))
