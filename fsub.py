@@ -2922,7 +2922,8 @@ async def show_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("➖ HAPUS VIP", callback_data="admin_remove_vip")
         ],
         [
-            InlineKeyboardButton("💎 LIST MEMBER VIP", callback_data="admin_list_vip")
+            InlineKeyboardButton("💎 LIST MEMBER VIP", callback_data="admin_list_vip"),
+            InlineKeyboardButton("🖼️ BUAT POSTER", callback_data="admin_poster")
         ],
         [
             InlineKeyboardButton("📢 BROADCAST", callback_data="admin_broadcast_menu"),
