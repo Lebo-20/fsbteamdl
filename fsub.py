@@ -1025,6 +1025,77 @@ async def tarikdata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await msg.edit_text(f"❌ <b>Terjadi kesalahan:</b> {e}", parse_mode=ParseMode.HTML)
 
+# ===================== /listvip - LIST MEMBER VIP AKTIF =====================
+async def listvip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk perintah /listvip - menampilkan daftar member VIP (admin only)"""
+    user = update.effective_user
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ Perintah ini hanya untuk admin!")
+        return
+
+    msg = await update.message.reply_text("🔄 <b>Sedang mengambil data member VIP...</b>", parse_mode=ParseMode.HTML)
+    
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            # Gunakan query yang lebih santai untuk format tanggal
+            cursor.execute("""
+                SELECT user_id, first_name, username, vip_until, vip_limited_until, vip_type
+                FROM users 
+                WHERE (vip_until IS NOT NULL AND vip_until != '')
+                   OR (vip_limited_until IS NOT NULL AND vip_limited_until != '')
+                ORDER BY vip_until DESC, vip_limited_until DESC
+                LIMIT 100
+            """)
+            all_vips = cursor.fetchall()
+        
+        if not all_vips:
+            await msg.edit_text("❌ <b>Belum ada data member VIP di database.</b>", parse_mode=ParseMode.HTML)
+            return
+
+        now = datetime.now()
+        active_vips = []
+        
+        for m in all_vips:
+            is_active = False
+            # Cek manual di Python agar lebih akurat dengan format ISO
+            try:
+                if m['vip_until']:
+                    exp = datetime.fromisoformat(m['vip_until'].replace('Z', '+00:00'))
+                    if exp > now: is_active = True
+                if not is_active and m['vip_limited_until']:
+                    exp = datetime.fromisoformat(m['vip_limited_until'].replace('Z', '+00:00'))
+                    if exp > now: is_active = True
+            except:
+                # Jika format error, anggap aktif saja daripada tidak tampil
+                is_active = True
+            
+            if is_active:
+                active_vips.append(m)
+
+        if not active_vips:
+            await msg.edit_text("✅ <b>Tidak ada member VIP yang masa aktifnya masih berlaku.</b>", parse_mode=ParseMode.HTML)
+            return
+
+        text = f"💎 <b>LIST MEMBER VIP AKTIF ({len(active_vips)})</b>\n\n"
+        for i, m in enumerate(active_vips[:50], 1): # Tampilkan 50 saja agar tidak kepanjangan
+            name = m['first_name'] or "User"
+            uname = f"(@{m['username']})" if m['username'] else ""
+            v_type = m['vip_type'] or "REGULAR"
+            
+            exp_str = m['vip_until'] or m['vip_limited_until']
+            expiry = exp_str[:10] if exp_str else "???"
+            
+            text += f"{i}. <b>{name}</b> {uname}\n   └ ID: <code>{m['user_id']}</code> | {v_type} | Exp: {expiry}\n"
+
+        if len(active_vips) > 50:
+            text += f"\n<i>...dan {len(active_vips) - 50} member lainnya.</i>"
+
+        await msg.edit_text(text, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        await msg.edit_text(f"❌ <b>Terjadi kesalahan:</b> {e}", parse_mode=ParseMode.HTML)
+
 # ===================== /redeem - REDEEM KODE VIP =====================
 async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk perintah /redeem KODE - user menukarkan kode VIP"""
@@ -5212,6 +5283,7 @@ def main():
     application.add_handler(CommandHandler("addvip", addvip_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("tarikdata", tarikdata_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("sync_db", tarikdata_command, filters=filters.ChatType.PRIVATE))
+    application.add_handler(CommandHandler("listvip", listvip_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("redeem", redeem_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("update", update_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("listgroup", listgroup_command, filters=filters.ChatType.PRIVATE))
