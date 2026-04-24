@@ -5288,6 +5288,7 @@ def main():
     application.add_handler(CommandHandler("cancel", cancel_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("privacy", privacy_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("search", search_command, filters=filters.ChatType.PRIVATE))
+    application.add_handler(CommandHandler("cari", search_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("hapus", hapus_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("db", db_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("cekuser", cekuser_command, filters=filters.ChatType.PRIVATE))
