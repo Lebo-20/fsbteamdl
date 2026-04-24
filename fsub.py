@@ -2464,11 +2464,46 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logger.error(f"Gagal edit post channel: {e}")
 
+# ===================== POSTER HANDLER =====================
+async def poster_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk perintah /poster - membuat pengumuman poster drama"""
+    user = update.effective_user
+    if not is_admin(user.id): return
+    context.user_data['admin_mode'] = 'waiting_poster_photo'
+    await update.message.reply_text(
+        "🖼️ *BUAT POSTER DRAMA*\n\n"
+        "Silakan kirimkan **Gambar Poster** beserta **Sinopsis**-nya di bagian Caption.\n\n"
+        "Ketik /cancel untuk membatalkan.",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
 # ===================== PAYMENT HANDLERS =====================
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler untuk upload bukti pembayaran QRIS"""
+    """Handler untuk upload bukti pembayaran QRIS, broadcast, atau poster"""
     user = update.effective_user
     
+    # CEK UNTUK POSTER
+    if context.user_data.get('admin_mode') == 'waiting_poster_photo' and is_admin(user.id):
+        file_id = update.message.photo[-1].file_id
+        caption = update.message.caption or "Tidak ada sinopsis."
+        
+        context.user_data['poster_photo'] = file_id
+        context.user_data['poster_synopsis'] = caption
+        context.user_data['admin_mode'] = 'waiting_poster_title'
+        
+        await update.message.reply_text(
+            "✅ Foto dan Sinopsis diterima.\n\n"
+            "Sekarang kirimkan **Judul Drama**-nya.\n"
+            "Contoh: `Jiwa Raga Pendekar Wanita`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+        
+    # CEK UNTUK BROADCAST
+    if context.user_data.get('broadcast_mode') == 'waiting_content' and is_admin(user.id):
+        await handle_broadcast_content(update, context)
+        return
+        
     if 'buy_days' not in context.user_data or 'buy_type' not in context.user_data:
         await update.message.reply_text("❌ Silakan pilih paket VIP terlebih dahulu!")
         return
@@ -2766,6 +2801,16 @@ async def process_broadcast(application: Application, broadcast_id: int):
                             photo=item['file_id'],
                             caption=item['caption'],
                             protect_content=is_protected
+                        )
+                    elif item['message_type'] == 'poster':
+                        kb = [[InlineKeyboardButton("▶️ Tonton Sekarang", url=item['content'])]]
+                        await application.bot.send_photo(
+                            chat_id=item['user_id'],
+                            photo=item['file_id'],
+                            caption=item['caption'],
+                            reply_markup=InlineKeyboardMarkup(kb),
+                            protect_content=is_protected,
+                            parse_mode=ParseMode.MARKDOWN
                         )
                     elif item['message_type'] == 'video':
                         await application.bot.send_video(
@@ -3769,6 +3814,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("admin_list_vip_page_") and is_admin(user.id):
         page = int(data.split("_")[4])
         await show_vip_list(update, context, page=page)
+        
+    elif data == "admin_poster" and is_admin(user.id):
+        context.user_data['admin_mode'] = 'waiting_poster_photo'
+        await safe_edit_message(
+            query,
+            "🖼️ <b>BUAT POSTER DRAMA</b>\n\n"
+            "Silakan kirimkan <b>Gambar Poster</b> beserta <b>Sinopsis</b>-nya di bagian Caption.\n\n"
+            "Ketik /cancel untuk membatalkan.",
+            parse_mode=ParseMode.HTML
+        )
     
     elif data == "admin_check_user" and is_admin(user.id):
         context.user_data["admin_mode"] = "waiting_user_id"
@@ -4707,6 +4762,59 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await safe_edit_message(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     
+    elif data == "poster_confirm_cancel" and is_admin(user.id):
+        context.user_data.pop('poster_photo', None)
+        context.user_data.pop('poster_synopsis', None)
+        context.user_data.pop('poster_title', None)
+        context.user_data.pop('poster_parts', None)
+        context.user_data.pop('poster_type', None)
+        context.user_data.pop('poster_link', None)
+        await safe_edit_message(query, "❌ Pembuatan poster dibatalkan.")
+        
+    elif data == "poster_confirm_broadcast" and is_admin(user.id):
+        photo = context.user_data.get('poster_photo')
+        synopsis = context.user_data.get('poster_synopsis')
+        title = context.user_data.get('poster_title')
+        parts = context.user_data.get('poster_parts')
+        v_type = context.user_data.get('poster_type')
+        link = context.user_data.get('poster_link')
+        
+        text = (
+            f"🎬 *{title}*\n\n"
+            f"📝 *Sinopsis:*\n{synopsis}\n\n"
+            f"📦 *Total Parts:* {parts}\n"
+            f"🏷 *Tipe:* {v_type}"
+        )
+        
+        await query.answer("Memulai proses broadcast...")
+        
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO broadcasts (admin_id, message_type, content, file_id, caption)
+                VALUES (?, 'poster', ?, ?, ?)
+            """, (user.id, link, photo, text))
+            broadcast_id = cursor.lastrowid
+            
+            cursor.execute("SELECT user_id FROM users")
+            all_users = cursor.fetchall()
+            
+            queue_data = [(broadcast_id, u['user_id'], 'PENDING') for u in all_users]
+            cursor.executemany("""
+                INSERT INTO broadcast_queue (broadcast_id, user_id, status)
+                VALUES (?, ?, ?)
+            """, queue_data)
+            
+            cursor.execute("UPDATE broadcasts SET total_recipients = ? WHERE id = ?", (len(all_users), broadcast_id))
+            conn.commit()
+            
+        await query.edit_message_caption(
+            caption=f"✅ *POSTER BROADCAST DIBUAT!*\n\nData poster akan dikirimkan ke {len(all_users)} user di background.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        asyncio.create_task(process_broadcast(context.application, broadcast_id))
+    
     # ==================== BACK TO MAIN ====================
     elif data == "back_main":
         user_info = get_user_or_create(user.id, user.username, user.first_name)
@@ -4757,6 +4865,75 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Pesan berhasil terkirim ke user <code>{target_id}</code>", parse_mode=ParseMode.HTML)
         except Exception as e:
             await update.message.reply_text(f"❌ Gagal mengirim pesan: {e}")
+        return
+
+    # CEK STATE WAITING POSTER
+    if context.user_data.get('admin_mode') == 'waiting_poster_title' and is_admin(user.id):
+        context.user_data['poster_title'] = update.message.text.strip()
+        context.user_data['admin_mode'] = 'waiting_poster_parts'
+        await update.message.reply_text(
+            "✅ Judul disimpan.\n\n"
+            "Berapa **Total Parts/Episode**?\n"
+            "Contoh: `1` atau `24`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+        
+    if context.user_data.get('admin_mode') == 'waiting_poster_parts' and is_admin(user.id):
+        context.user_data['poster_parts'] = update.message.text.strip()
+        context.user_data['admin_mode'] = 'waiting_poster_type'
+        await update.message.reply_text(
+            "✅ Total parts disimpan.\n\n"
+            "Apa tipe dramanya?\n"
+            "Balas dengan teks bebas, misal: `💎 VIP` atau `🆓 FREE`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+        
+    if context.user_data.get('admin_mode') == 'waiting_poster_type' and is_admin(user.id):
+        context.user_data['poster_type'] = update.message.text.strip()
+        context.user_data['admin_mode'] = 'waiting_poster_link'
+        await update.message.reply_text(
+            "✅ Tipe disimpan.\n\n"
+            "Terakhir, kirimkan **Link Bot** untuk tombol Tonton Sekarang.\n"
+            "Contoh Link: `https://t.me/BotAnda?start=kode123`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+        
+    if context.user_data.get('admin_mode') == 'waiting_poster_link' and is_admin(user.id):
+        link = update.message.text.strip()
+        context.user_data.pop('admin_mode', None)
+        
+        photo = context.user_data['poster_photo']
+        synopsis = context.user_data['poster_synopsis']
+        title = context.user_data['poster_title']
+        parts = context.user_data['poster_parts']
+        v_type = context.user_data['poster_type']
+        
+        context.user_data['poster_link'] = link
+        
+        text = (
+            f"🎬 *{title}*\n\n"
+            f"📝 *Sinopsis:*\n{synopsis}\n\n"
+            f"📦 *Total Parts:* {parts}\n"
+            f"🏷 *Tipe:* {v_type}"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("▶️ Tonton Sekarang", url=link)],
+            [
+                InlineKeyboardButton("✅ Broadcast", callback_data="poster_confirm_broadcast"),
+                InlineKeyboardButton("❌ Batal", callback_data="poster_confirm_cancel")
+            ]
+        ]
+        
+        await update.message.reply_photo(
+            photo=photo,
+            caption=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.MARKDOWN
+        )
         return
 
     # CEK STATE WAITING ADD VIP ID
@@ -5301,6 +5478,7 @@ def main():
     application.add_handler(CommandHandler("listgroup", listgroup_command, filters=filters.ChatType.PRIVATE))
     
     # Broadcast commands
+    application.add_handler(CommandHandler("poster", poster_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("broadcast", broadcast_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("broadcast_status", broadcast_status_command, filters=filters.ChatType.PRIVATE))
     
