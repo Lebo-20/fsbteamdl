@@ -2183,6 +2183,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             
             cursor.execute("UPDATE videos SET backup_message_id = ? WHERE id = ?", (backup_msg.message_id, video_id))
+            conn.commit()
             # [FIREBASE] Sync backup_message_id
             firebase_sync.sync_video_update_ids(video_code, backup_message_id=backup_msg.message_id)
             logger.info(f"Video backed up to channel: {backup_msg.message_id}")
@@ -2335,6 +2336,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             
             cursor.execute("UPDATE videos SET backup_message_id = ? WHERE id = ?", (backup_msg.message_id, video_id))
+            conn.commit()
             logger.info(f"Document backed up to channel: {backup_msg.message_id}")
         except Exception as e:
             logger.error(f"Gagal kirim ke backup channel: {e}")
@@ -2464,6 +2466,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
             
             cursor.execute("UPDATE videos SET backup_message_id = ? WHERE id = ?", (backup_msg.message_id, video_id))
+            conn.commit()
         except Exception as e:
             logger.error(f"Gagal kirim ke backup channel: {e}")
             
@@ -2876,6 +2879,7 @@ async def process_broadcast(application: Application, broadcast_id: int):
                         SET status = 'SENT', sent_at = ? 
                         WHERE id = ?
                     """, (datetime.now().isoformat(), item['id']))
+                    conn.commit()
                     success_count += 1
                     
                 except Exception as e:
@@ -2885,6 +2889,7 @@ async def process_broadcast(application: Application, broadcast_id: int):
                         SET status = 'FAILED', error_message = ? 
                         WHERE id = ?
                     """, (str(e)[:200], item['id']))
+                    conn.commit()
                     fail_count += 1
                 
                 await asyncio.sleep(0.05)  # Rate limiting
