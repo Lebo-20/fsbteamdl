@@ -146,6 +146,34 @@ def init_database():
             except:
                 pass
         
+        if 'vip_type' not in column_names:
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN vip_type TEXT DEFAULT 'REGULAR'")
+                logger.info("Kolom vip_type berhasil ditambahkan")
+            except:
+                pass
+                
+        if 'total_vip_days' not in column_names:
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN total_vip_days INTEGER DEFAULT 0")
+                logger.info("Kolom total_vip_days berhasil ditambahkan")
+            except:
+                pass
+                
+        if 'vip_uses_left' not in column_names:
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN vip_uses_left INTEGER DEFAULT 0")
+                logger.info("Kolom vip_uses_left berhasil ditambahkan")
+            except:
+                pass
+                
+        if 'vip_max_uses' not in column_names:
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN vip_max_uses INTEGER DEFAULT 0")
+                logger.info("Kolom vip_max_uses berhasil ditambahkan")
+            except:
+                pass
+        
         # Tabel payment
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS payments (
