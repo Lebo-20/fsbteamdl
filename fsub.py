@@ -2765,6 +2765,13 @@ async def show_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("📡 GRUP SUMBER", callback_data="admin_source_menu")
         ],
         [
+            InlineKeyboardButton("➕ TAMBAH VIP", callback_data="admin_add_vip"),
+            InlineKeyboardButton("➖ HAPUS VIP", callback_data="admin_remove_vip")
+        ],
+        [
+            InlineKeyboardButton("💎 LIST MEMBER VIP", callback_data="admin_list_vip")
+        ],
+        [
             InlineKeyboardButton("📢 BROADCAST", callback_data="admin_broadcast_menu"),
             InlineKeyboardButton("📋 RIWAYAT BC", callback_data="admin_broadcast_history")
         ],
@@ -3627,6 +3634,59 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Trigger refresh admin panel secara manual
         await show_admin_panel(update, context)
+    
+    elif data == "admin_add_vip" and is_admin(user.id):
+        context.user_data["admin_mode"] = "waiting_add_vip_id"
+        await safe_edit_message(
+            query,
+            "➕ <b>TAMBAH VIP MANUAL</b>\n\n"
+            "Silakan kirimkan <b>User ID</b> yang ingin diberikan VIP.\n\n"
+            "Atau ketik /cancel untuk batal.",
+            parse_mode=ParseMode.HTML
+        )
+    
+    elif data == "admin_remove_vip" and is_admin(user.id):
+        context.user_data["admin_mode"] = "waiting_remove_vip_id"
+        await safe_edit_message(
+            query,
+            "➖ <b>HAPUS VIP MANUAL</b>\n\n"
+            "Silakan kirimkan <b>User ID</b> yang ingin dihapus status VIP-nya.\n\n"
+            "Atau ketik /cancel untuk batal.",
+            parse_mode=ParseMode.HTML
+        )
+
+    elif data == "admin_list_vip" and is_admin(user.id):
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT user_id, first_name, username, vip_until, vip_limited_until, vip_type
+                FROM users 
+                WHERE vip_until > datetime('now') 
+                   OR vip_limited_until > datetime('now')
+                ORDER BY vip_until DESC, vip_limited_until DESC
+                LIMIT 50
+            """)
+            vip_members = cursor.fetchall()
+            
+        if not vip_members:
+            await query.answer("Belum ada member VIP aktif.", show_alert=True)
+            return
+
+        text = "💎 <b>DAFTAR MEMBER VIP AKTIF (50 Terbaru)</b>\n\n"
+        for i, m in enumerate(vip_members, 1):
+            name = m['first_name'] or "User"
+            uname = f"(@{m['username']})" if m['username'] else ""
+            
+            v_type = m['vip_type'] or "REGULAR"
+            if m['vip_until']:
+                expiry = m['vip_until'][:10]
+            else:
+                expiry = m['vip_limited_until'][:10]
+                
+            text += f"{i}. <b>{name}</b> {uname}\n   └ ID: <code>{m['user_id']}</code> | {v_type} | s/d {expiry}\n"
+            
+        keyboard = [[InlineKeyboardButton("🔙 Kembali", callback_data="admin_panel")]]
+        await safe_edit_message(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     
     elif data == "admin_check_user" and is_admin(user.id):
         context.user_data["admin_mode"] = "waiting_user_id"
@@ -4615,6 +4675,56 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Pesan berhasil terkirim ke user <code>{target_id}</code>", parse_mode=ParseMode.HTML)
         except Exception as e:
             await update.message.reply_text(f"❌ Gagal mengirim pesan: {e}")
+        return
+
+    # CEK STATE WAITING ADD VIP ID
+    if context.user_data.get('admin_mode') == 'waiting_add_vip_id' and is_admin(user.id):
+        target_id = update.message.text.strip()
+        context.user_data['temp_vip_id'] = target_id
+        context.user_data['admin_mode'] = 'waiting_add_vip_days'
+        
+        await update.message.reply_text(
+            f"👤 User ID: <code>{target_id}</code>\n\n"
+            f"Berapa <b>jumlah hari</b> VIP yang ingin diberikan?\n"
+            f"Contoh: <code>30</code>\n\n"
+            f"Tipe default adalah <b>REGULAR</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # CEK STATE WAITING ADD VIP DAYS
+    if context.user_data.get('admin_mode') == 'waiting_add_vip_days' and is_admin(user.id):
+        days_str = update.message.text.strip()
+        target_id = context.user_data.get('temp_vip_id')
+        context.user_data.pop('admin_mode', None)
+        context.user_data.pop('temp_vip_id', None)
+        
+        try:
+            # Gunakan fungsi addvip_command yang sudah ada dengan simulasi context.args
+            context.args = [target_id, days_str, "regular"]
+            await addvip_command(update, context)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Gagal memproses: {e}")
+        return
+
+    # CEK STATE WAITING REMOVE VIP ID
+    if context.user_data.get('admin_mode') == 'waiting_remove_vip_id' and is_admin(user.id):
+        target_id = update.message.text.strip()
+        context.user_data.pop('admin_mode', None)
+        
+        try:
+            user_id = int(target_id)
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE users SET vip_until = NULL, vip_limited_until = NULL, vip_type = 'FREE' WHERE user_id = ?", (user_id,))
+                conn.commit()
+            
+            # Sync ke Firebase
+            firebase_sync.sync_user_vip_clear(user_id, clear_regular=True, clear_limited=True)
+            
+            await update.message.reply_text(f"✅ Status VIP untuk user <code>{user_id}</code> berhasil <b>DIHAPUS</b>.", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Gagal menghapus VIP: {e}")
         return
 
     # CEK STATE WAITING CHECK USER (BARU)
