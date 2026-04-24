@@ -686,6 +686,11 @@ async def safe_edit_message(query, text, reply_markup=None, parse_mode=None):
     Jika pesan tidak memiliki teks, kirim pesan baru.
     """
     try:
+        try:
+            await query.answer()
+        except:
+            pass
+            
         if query.message.text is not None:
             await query.edit_message_text(
                 text,
@@ -3009,10 +3014,26 @@ async def show_source_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_edit_message(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
 # ===================== CALLBACK HANDLERS =====================
+from functools import wraps
+
+def answer_query_safely(func):
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        try:
+            return await func(update, context, *args, **kwargs)
+        finally:
+            if update.callback_query:
+                try:
+                    await update.callback_query.answer()
+                except:
+                    pass
+    return wrapper
+
+@answer_query_safely
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk semua callback"""
     query = update.callback_query
-    await query.answer()
+    # await query.answer()
     
     user = update.effective_user
     data = query.data
