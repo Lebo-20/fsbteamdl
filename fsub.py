@@ -1452,6 +1452,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if status['pending_payments'] > 0:
         pending_text = f"\n⏳ Pembayaran Pending: {status['pending_payments']}"
     
+    keyboard = []
     if status['vip_overall'] == 'REGULAR':
         message = (
             f"👤 STATUS MEMBERSHIP ANDA\n\n"
@@ -1491,6 +1492,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💡 Ingin jadi VIP?\n"
             f"Klik tombol di bawah untuk membeli akses VIP."
         )
+        keyboard = [[InlineKeyboardButton("🛍️ Beli VIP", callback_data="buy_vip")]]
     
     is_protected = (get_setting('protect_content') == 'ON')
     msg = await update.message.reply_text(message, reply_markup=InlineKeyboardMarkup(keyboard), protect_content=is_protected)
@@ -1572,7 +1574,10 @@ async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Jika AKTIF, fitur forward dan simpan konten akan dimatikan untuk semua video.\n\n"
             "Pilih tindakan:"
         )
-        keyboard.append([InlineKeyboardButton("⚙️ Buka Panel Admin", callback_data="admin_panel")])
+        keyboard = [
+            [InlineKeyboardButton("🛡️ TOGGLE PRIVASI", callback_data="admin_toggle_privacy")],
+            [InlineKeyboardButton("⚙️ Buka Panel Admin", callback_data="admin_panel")]
+        ]
         
         is_protected = (get_setting('protect_content') == 'ON')
         msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
