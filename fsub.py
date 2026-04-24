@@ -2810,7 +2810,7 @@ async def process_broadcast(application: Application, broadcast_id: int):
                             caption=item['caption'],
                             reply_markup=InlineKeyboardMarkup(kb),
                             protect_content=is_protected,
-                            parse_mode=ParseMode.MARKDOWN
+                            parse_mode=ParseMode.HTML
                         )
                     elif item['message_type'] == 'video':
                         await application.bot.send_video(
@@ -4779,11 +4779,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         v_type = context.user_data.get('poster_type')
         link = context.user_data.get('poster_link')
         
+        # Re-format text as HTML for safety
         text = (
-            f"🎬 *{title}*\n\n"
-            f"📝 *Sinopsis:*\n{synopsis}\n\n"
-            f"📦 *Total Parts:* {parts}\n"
-            f"🏷 *Tipe:* {v_type}"
+            f"🎬 <b>{title}</b>\n\n"
+            f"📝 <b>Sinopsis:</b>\n{synopsis}\n\n"
+            f"📦 <b>Total Parts:</b> {parts}\n"
+            f"🏷 <b>Tipe:</b> {v_type}"
         )
         
         await query.answer("Memulai proses broadcast...")
@@ -4809,8 +4810,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
             
         await query.edit_message_caption(
-            caption=f"✅ *POSTER BROADCAST DIBUAT!*\n\nData poster akan dikirimkan ke {len(all_users)} user di background.",
-            parse_mode=ParseMode.MARKDOWN
+            caption=f"✅ <b>POSTER BROADCAST DIBUAT!</b>\n\nData poster akan dikirimkan ke {len(all_users)} user di background.",
+            parse_mode=ParseMode.HTML
         )
         
         asyncio.create_task(process_broadcast(context.application, broadcast_id))
@@ -4896,13 +4897,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "✅ Tipe disimpan.\n\n"
             "Terakhir, kirimkan **Link Bot** untuk tombol Tonton Sekarang.\n"
-            "Contoh Link: `https://t.me/BotAnda?start=kode123`",
+            "Contoh Link: `https://t.me/BotAnda?start=kode123`\n"
+            "⚠️ *Pastikan link valid menggunakan https://*",
             parse_mode=ParseMode.MARKDOWN
         )
         return
         
     if context.user_data.get('admin_mode') == 'waiting_poster_link' and is_admin(user.id):
         link = update.message.text.strip()
+        
+        # Format URL agar selalu valid untuk InlineKeyboardButton
+        if not link.startswith(('http://', 'https://', 'tg://')):
+            link = 'https://' + link
+            
         context.user_data.pop('admin_mode', None)
         
         photo = context.user_data['poster_photo']
@@ -4913,11 +4920,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         context.user_data['poster_link'] = link
         
+        # Ubah format menjadi HTML untuk menghindari crash jika ada karakter markdown di sinopsis
         text = (
-            f"🎬 *{title}*\n\n"
-            f"📝 *Sinopsis:*\n{synopsis}\n\n"
-            f"📦 *Total Parts:* {parts}\n"
-            f"🏷 *Tipe:* {v_type}"
+            f"🎬 <b>{title}</b>\n\n"
+            f"📝 <b>Sinopsis:</b>\n{synopsis}\n\n"
+            f"📦 <b>Total Parts:</b> {parts}\n"
+            f"🏷 <b>Tipe:</b> {v_type}"
         )
         
         keyboard = [
@@ -4928,12 +4936,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
         
-        await update.message.reply_photo(
-            photo=photo,
-            caption=text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        try:
+            await update.message.reply_photo(
+                photo=photo,
+                caption=text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            await update.message.reply_text(f"❌ Terjadi kesalahan saat memproses preview: {e}")
+            
         return
 
     # CEK STATE WAITING ADD VIP ID
