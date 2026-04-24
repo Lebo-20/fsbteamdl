@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from typing import Dict, List, Tuple, Optional, Any
 import time
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaVideo, InputMediaDocument
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
     filters, ContextTypes
@@ -2811,7 +2811,7 @@ async def process_broadcast(application: Application, broadcast_id: int):
                             protect_content=is_protected
                         )
                     elif item['message_type'] == 'poster':
-                        kb = [[InlineKeyboardButton("▶️ Tonton Sekarang", url=item['content'])]]
+                        kb = [[InlineKeyboardButton("▶️ Tonton Sekarang", callback_data=f"watch_poster_{item['content']}")]]
                         await application.bot.send_photo(
                             chat_id=item['user_id'],
                             photo=item['file_id'],
@@ -2995,6 +2995,81 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ==================== NO ACTION ====================
     if data == "no_action":
         await query.answer("Informasi", show_alert=False)
+        return
+        
+    # ==================== WATCH POSTER ====================
+    if data.startswith("watch_poster_"):
+        video_code = data.replace("watch_poster_", "")
+        
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM videos WHERE code = ?", (video_code,))
+            video = cursor.fetchone()
+            
+            if not video:
+                await query.answer("❌ Video tidak ditemukan atau telah dihapus!", show_alert=True)
+                return
+                
+            # Cek akses
+            can_access = False
+            access_reason = "FREE"
+            
+            if is_admin(user.id) or is_vip_regular(user.id):
+                can_access = True
+                access_reason = "ADMIN_OR_VIP"
+            elif is_vip_limited(user.id):
+                can_access = True
+                access_reason = "VIP_LIMITED"
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) as today_views FROM stats 
+                    WHERE user_id = ? AND action = 'VIEW' 
+                    AND timestamp >= date('now')
+                """, (user.id,))
+                today_views = cursor.fetchone()['today_views']
+                
+                if today_views < 1:
+                    can_access = True
+                    access_reason = "FREE_DAILY_QUOTA"
+                else:
+                    can_access = False
+                    access_reason = "QUOTA_EXHAUSTED"
+            
+            if can_access:
+                # Catat statistik
+                if access_reason == "VIP_LIMITED":
+                    cursor.execute("""
+                        UPDATE users 
+                        SET vip_limited_views = vip_limited_views + 1 
+                        WHERE user_id = ?
+                    """, (user.id,))
+                
+                cursor.execute("UPDATE videos SET view_count = view_count + 1 WHERE id = ?", (video['id'],))
+                
+                cursor.execute("""
+                    INSERT INTO stats (video_id, user_id, action, metadata)
+                    VALUES (?, ?, ?, ?)
+                """, (video['id'], user.id, 'VIEW', access_reason))
+                conn.commit()
+                
+                # Edit poster message media into the video/document!
+                try:
+                    if video['file_type'] == 'video':
+                        media = InputMediaVideo(media=video['file_id'], caption=video['caption'], parse_mode=ParseMode.HTML)
+                    else:
+                        media = InputMediaDocument(media=video['file_id'], caption=video['caption'], parse_mode=ParseMode.HTML)
+                        
+                    await query.edit_message_media(media=media)
+                except Exception as e:
+                    logger.error(f"Error editing message media: {e}")
+                    await query.answer("❌ Gagal memutar video. Silakan coba lagi.", show_alert=True)
+            else:
+                if access_reason == "QUOTA_EXHAUSTED":
+                    await query.answer("🔔 JATAH HARIAN HABIS\nSebagai user gratis, Anda hanya dapat menonton 1 video per hari.", show_alert=True)
+                elif is_vip_limited(user.id):
+                    await query.answer("🔒 Kuota VIP Limited Anda telah habis!", show_alert=True)
+                else:
+                    await query.answer("🔒 Video Ini Khusus Member VIP", show_alert=True)
         return
     
     # ==================== VIDEO MANAGEMENT ====================
@@ -4784,9 +4859,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=user.id,
             text=f"✅ Tipe disimpan: <b>{v_type}</b>\n\n"
-                 "Terakhir, kirimkan <b>Link Bot</b> untuk tombol Tonton Sekarang.\n"
-                 "Contoh Link: <code>https://t.me/BotAnda?start=kode123</code>\n"
-                 "⚠️ <i>Pastikan link valid menggunakan https://</i>",
+                 "Terakhir, kirimkan <b>Kode Unik Video</b> untuk tombol Tonton Sekarang.\n"
+                 "Contoh Kode: <code>e8b4a2f1</code>\n"
+                 "<i>(Jika Anda mengcopy link bot, ambil kode yang ada di ujungnya saja)</i>",
             parse_mode=ParseMode.HTML
         )
 
@@ -4937,11 +5012,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # (Bagian title dan waiting type dihapus, dipindah ke button callback)
         
     if context.user_data.get('admin_mode') == 'waiting_poster_link' and is_admin(user.id):
-        link = update.message.text.strip()
+        video_code = update.message.text.strip()
         
-        # Format URL agar selalu valid untuk InlineKeyboardButton
-        if not link.startswith(('http://', 'https://', 'tg://')):
-            link = 'https://' + link
+        # Ekstrak kode jika admin menempelkan seluruh link t.me/bot?start=kode
+        if "start=" in video_code:
+            video_code = video_code.split("start=")[-1]
+            
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM videos WHERE code = ?", (video_code,))
+            if not cursor.fetchone():
+                await update.message.reply_text("❌ Kode video tidak ditemukan di database. Pastikan kode benar atau ketik ulang:")
+                return
             
         context.user_data.pop('admin_mode', None)
         
@@ -4950,7 +5032,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = context.user_data['poster_parts']
         v_type = context.user_data['poster_type']
         
-        context.user_data['poster_link'] = link
+        context.user_data['poster_link'] = video_code
         
         # Ubah format menjadi HTML untuk menghindari crash jika ada karakter markdown di sinopsis
         text = (
@@ -4960,7 +5042,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         keyboard = [
-            [InlineKeyboardButton("▶️ Tonton Sekarang", url=link)],
+            [InlineKeyboardButton("▶️ Tonton Sekarang", callback_data=f"watch_poster_{video_code}")],
             [
                 InlineKeyboardButton("✅ Broadcast", callback_data="poster_confirm_broadcast"),
                 InlineKeyboardButton("❌ Batal", callback_data="poster_confirm_cancel")
