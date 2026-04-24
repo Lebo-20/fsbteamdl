@@ -992,6 +992,39 @@ async def addvip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         pass
 
+# ===================== /tarikdata - PULL DARI FIREBASE KE VPS =====================
+async def tarikdata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk menarik data dari Firebase ke VPS SQLite (admin only)"""
+    user = update.effective_user
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ Perintah ini hanya untuk admin!")
+        return
+        
+    msg = await update.message.reply_text("🔄 <b>Sedang menarik data dari Firebase...</b>\nProses ini mungkin memakan waktu beberapa detik.", parse_mode=ParseMode.HTML)
+    
+    try:
+        import subprocess
+        import sys
+        # Gunakan executable python yang sedang menjalankan bot
+        process = subprocess.Popen([sys.executable, "pull_from_firebase.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = process.communicate()
+        
+        if process.returncode == 0:
+            await msg.edit_text(
+                f"✅ <b>SINKRONISASI SELESAI!</b>\n\n"
+                f"Semua data dari Firebase Online telah berhasil di-download ke database lokal VPS.\n\n"
+                f"⚠️ <b>PENTING:</b> Silakan ketik perintah /update untuk merestart bot agar data terbaru langsung dimuat.", 
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await msg.edit_text(
+                f"❌ <b>Gagal menarik data:</b>\n\n"
+                f"<code>{stderr[:500]}</code>", 
+                parse_mode=ParseMode.HTML
+            )
+    except Exception as e:
+        await msg.edit_text(f"❌ <b>Terjadi kesalahan:</b> {e}", parse_mode=ParseMode.HTML)
+
 # ===================== /redeem - REDEEM KODE VIP =====================
 async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk perintah /redeem KODE - user menukarkan kode VIP"""
@@ -5054,6 +5087,7 @@ def main():
     application.add_handler(CommandHandler("db", db_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("cekuser", cekuser_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("addvip", addvip_command, filters=filters.ChatType.PRIVATE))
+    application.add_handler(CommandHandler("tarikdata", tarikdata_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("redeem", redeem_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("update", update_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("listgroup", listgroup_command, filters=filters.ChatType.PRIVATE))
