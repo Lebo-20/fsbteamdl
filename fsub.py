@@ -2489,12 +2489,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         context.user_data['poster_photo'] = file_id
         context.user_data['poster_synopsis'] = caption
-        context.user_data['admin_mode'] = 'waiting_poster_title'
+        context.user_data['admin_mode'] = 'waiting_poster_parts'
         
         await update.message.reply_text(
-            "✅ Foto dan Sinopsis diterima.\n\n"
-            "Sekarang kirimkan **Judul Drama**-nya.\n"
-            "Contoh: `Jiwa Raga Pendekar Wanita`",
+            "✅ Foto dan Teks (Sinopsis) diterima.\n\n"
+            "Berapa **Total Parts/Episode**?\n"
+            "Contoh: `1` atau `Full`",
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -4763,27 +4763,55 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await safe_edit_message(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     
+    elif data.startswith("poster_type_") and is_admin(user.id):
+        v_type = "💎 VIP" if data == "poster_type_vip" else "🆓 FREE"
+        context.user_data['poster_type'] = v_type
+        context.user_data['admin_mode'] = 'waiting_poster_link'
+        
+        try:
+            await query.message.delete()
+        except:
+            pass
+            
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=f"✅ Tipe disimpan: <b>{v_type}</b>\n\n"
+                 "Terakhir, kirimkan <b>Link Bot</b> untuk tombol Tonton Sekarang.\n"
+                 "Contoh Link: <code>https://t.me/BotAnda?start=kode123</code>\n"
+                 "⚠️ <i>Pastikan link valid menggunakan https://</i>",
+            parse_mode=ParseMode.HTML
+        )
+
     elif data == "poster_confirm_cancel" and is_admin(user.id):
+        preview_msg_id = context.user_data.get('poster_preview_msg_id')
         context.user_data.pop('poster_photo', None)
         context.user_data.pop('poster_synopsis', None)
-        context.user_data.pop('poster_title', None)
         context.user_data.pop('poster_parts', None)
         context.user_data.pop('poster_type', None)
         context.user_data.pop('poster_link', None)
-        await safe_edit_message(query, "❌ Pembuatan poster dibatalkan.")
+        context.user_data.pop('poster_preview_msg_id', None)
+        
+        try:
+            if preview_msg_id:
+                await context.bot.delete_message(chat_id=user.id, message_id=preview_msg_id)
+            else:
+                await query.message.delete()
+        except:
+            pass
+            
+        await context.bot.send_message(chat_id=user.id, text="❌ <b>Poster batal dipublish.</b>", parse_mode=ParseMode.HTML)
         
     elif data == "poster_confirm_broadcast" and is_admin(user.id):
+        preview_msg_id = context.user_data.get('poster_preview_msg_id')
         photo = context.user_data.get('poster_photo')
         synopsis = context.user_data.get('poster_synopsis')
-        title = context.user_data.get('poster_title')
         parts = context.user_data.get('poster_parts')
         v_type = context.user_data.get('poster_type')
         link = context.user_data.get('poster_link')
         
         # Re-format text as HTML for safety
         text = (
-            f"🎬 <b>{title}</b>\n\n"
-            f"📝 <b>Sinopsis:</b>\n{synopsis}\n\n"
+            f"{synopsis}\n\n"
             f"📦 <b>Total Parts:</b> {parts}\n"
             f"🏷 <b>Tipe:</b> {v_type}"
         )
@@ -4810,8 +4838,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("UPDATE broadcasts SET total_recipients = ? WHERE id = ?", (len(all_users), broadcast_id))
             conn.commit()
             
-        await query.edit_message_caption(
-            caption=f"✅ <b>POSTER BROADCAST DIBUAT!</b>\n\nData poster akan dikirimkan ke {len(all_users)} user di background.",
+        try:
+            if preview_msg_id:
+                await context.bot.delete_message(chat_id=user.id, message_id=preview_msg_id)
+            else:
+                await query.message.delete()
+        except:
+            pass
+            
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=f"✅ <b>POSTER BROADCAST DIBUAT!</b>\n\nData poster akan dikirimkan ke {len(all_users)} user di background tanpa mengganggu kinerja bot utama.",
             parse_mode=ParseMode.HTML
         )
         
@@ -4870,39 +4907,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # CEK STATE WAITING POSTER
-    if context.user_data.get('admin_mode') == 'waiting_poster_title' and is_admin(user.id):
-        context.user_data['poster_title'] = update.message.text.strip()
-        context.user_data['admin_mode'] = 'waiting_poster_parts'
-        await update.message.reply_text(
-            "✅ Judul disimpan.\n\n"
-            "Berapa **Total Parts/Episode**?\n"
-            "Contoh: `1` atau `24`",
-            parse_mode=ParseMode.MARKDOWN
-        )
-        return
-        
     if context.user_data.get('admin_mode') == 'waiting_poster_parts' and is_admin(user.id):
         context.user_data['poster_parts'] = update.message.text.strip()
-        context.user_data['admin_mode'] = 'waiting_poster_type'
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("💎 VIP", callback_data="poster_type_vip"),
+                InlineKeyboardButton("🆓 FREE", callback_data="poster_type_free")
+            ]
+        ]
+        
         await update.message.reply_text(
             "✅ Total parts disimpan.\n\n"
             "Apa tipe dramanya?\n"
-            "Balas dengan teks bebas, misal: `💎 VIP` atau `🆓 FREE`",
+            "Silakan pilih tombol di bawah:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode=ParseMode.MARKDOWN
         )
         return
         
-    if context.user_data.get('admin_mode') == 'waiting_poster_type' and is_admin(user.id):
-        context.user_data['poster_type'] = update.message.text.strip()
-        context.user_data['admin_mode'] = 'waiting_poster_link'
-        await update.message.reply_text(
-            "✅ Tipe disimpan.\n\n"
-            "Terakhir, kirimkan **Link Bot** untuk tombol Tonton Sekarang.\n"
-            "Contoh Link: `https://t.me/BotAnda?start=kode123`\n"
-            "⚠️ *Pastikan link valid menggunakan https://*",
-            parse_mode=ParseMode.MARKDOWN
-        )
-        return
+    # (Bagian title dan waiting type dihapus, dipindah ke button callback)
         
     if context.user_data.get('admin_mode') == 'waiting_poster_link' and is_admin(user.id):
         link = update.message.text.strip()
@@ -4915,7 +4939,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         photo = context.user_data['poster_photo']
         synopsis = context.user_data['poster_synopsis']
-        title = context.user_data['poster_title']
         parts = context.user_data['poster_parts']
         v_type = context.user_data['poster_type']
         
@@ -4923,8 +4946,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Ubah format menjadi HTML untuk menghindari crash jika ada karakter markdown di sinopsis
         text = (
-            f"🎬 <b>{title}</b>\n\n"
-            f"📝 <b>Sinopsis:</b>\n{synopsis}\n\n"
+            f"{synopsis}\n\n"
             f"📦 <b>Total Parts:</b> {parts}\n"
             f"🏷 <b>Tipe:</b> {v_type}"
         )
@@ -4938,12 +4960,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         
         try:
-            await update.message.reply_photo(
+            preview_msg = await update.message.reply_photo(
                 photo=photo,
                 caption=text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode=ParseMode.HTML
             )
+            # Simpan ID pesan preview untuk dihapus nanti
+            context.user_data['poster_preview_msg_id'] = preview_msg.message_id
         except Exception as e:
             await update.message.reply_text(f"❌ Terjadi kesalahan saat memproses preview: {e}")
             
