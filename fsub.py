@@ -16,6 +16,8 @@ from telegram.ext import (
     filters, ContextTypes
 )
 from telegram.constants import ParseMode
+import traceback
+import html
 
 # ===================== FIREBASE SYNC =====================
 import firebase_sync
@@ -28,7 +30,7 @@ BACKUP_CHANNEL_ID = -1002549194754  # ID Channel untuk backup
 LOG_CHANNEL_ID = -1003573270991     # Bisa sama atau beda
 PRICE_PER_DAY = 1000
 BOT_USERNAME = "ShortTeamDl_bot"
-
+START_IMAGE_URL = "https://i.ibb.co.com/zHhMv8Bf/IMG-20260424-WA0001.jpg" # URL Gambar /start
 # Harga paket VIP Limited
 VIP_LIMITED_1K_PRICE = 1000   # 1 hari, 2x lihat
 VIP_LIMITED_3K_PRICE = 3000   # 3 hari, 6x lihat
@@ -1400,7 +1402,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("⚙️ Panel Admin", callback_data="admin_panel")])
     
     is_protected = (get_setting('protect_content') == 'ON')
-    msg = await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), protect_content=is_protected)
+    
+    try:
+        if START_IMAGE_URL:
+            msg = await update.message.reply_photo(
+                photo=START_IMAGE_URL,
+                caption=welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                protect_content=is_protected
+            )
+        else:
+            msg = await update.message.reply_text(
+                welcome_text, 
+                reply_markup=InlineKeyboardMarkup(keyboard), 
+                protect_content=is_protected
+            )
+    except Exception as e:
+        logger.error(f"Gagal kirim foto start: {e}")
+        # Fallback ke teks jika foto gagal
+        msg = await update.message.reply_text(
+            welcome_text, 
+            reply_markup=InlineKeyboardMarkup(keyboard), 
+            protect_content=is_protected
+        )
+        
     context.user_data['last_msg_id'] = msg.message_id
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5579,6 +5604,33 @@ async def post_init(application: Application):
     logger.info("Bot started successfully")
 
 # ===================== MAIN =====================
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and send a telegram message to notify the developer."""
+    logger.error("Exception while handling an update:", exc_info=context.error)
+
+    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+    tb_string = "".join(tb_list)
+
+    user_info = "Tidak diketahui"
+    if isinstance(update, Update) and update.effective_user:
+        u = update.effective_user
+        user_info = f"<a href='tg://user?id={u.id}'>{u.first_name}</a> (ID: <code>{u.id}</code>)"
+        
+    # Build error message
+    message = (
+        f"🚨 <b>BOT ERROR REPORT</b> 🚨\n\n"
+        f"👤 <b>User:</b> {user_info}\n\n"
+        f"<b>Error:</b>\n<pre>{html.escape(tb_string[-1000:])}</pre>"
+    )
+    
+    for admin_id in ADMIN_IDS:
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id, text=message, parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
+
 def main():
     """Main function"""
     init_database()
@@ -5642,6 +5694,9 @@ def main():
     
     # ==================== HANDLER CALLBACK UMUM ====================
     application.add_handler(CallbackQueryHandler(button_callback))
+    
+    # Tambahkan global error handler
+    application.add_error_handler(error_handler)
     
     # Job queue untuk cek expired VIP
     job_queue = application.job_queue
