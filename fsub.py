@@ -51,7 +51,8 @@ DATABASE_FILE = 'bot_database.db'
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DATABASE_FILE)
+    conn = sqlite3.connect(DATABASE_FILE, timeout=30.0)
+    conn.execute('PRAGMA journal_mode=wal;')
     conn.row_factory = sqlite3.Row
     try:
         yield conn
