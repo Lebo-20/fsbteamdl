@@ -5625,19 +5625,39 @@ async def post_init(application: Application):
     """Fungsi yang dijalankan setelah bot start"""
     logger.info("Bot started successfully")
 
-# ===================== MAIN =====================
+# Cache untuk menyimpan error terakhir
+recent_errors_cache = {}
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log the error and send a telegram message to notify the developer."""
     logger.error("Exception while handling an update:", exc_info=context.error)
 
-    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
-    tb_string = "".join(tb_list)
-
+    user_id = "unknown"
     user_info = "Tidak diketahui"
     if isinstance(update, Update) and update.effective_user:
         u = update.effective_user
+        user_id = str(u.id)
         user_info = f"<a href='tg://user?id={u.id}'>{u.first_name}</a> (ID: <code>{u.id}</code>)"
         
+    # Cek duplikasi error
+    error_str = str(context.error)
+    error_key = f"{user_id}_{error_str}"
+    
+    now = time.time()
+    # Bersihkan cache lama (lebih dari 1 jam)
+    keys_to_delete = [k for k, v in recent_errors_cache.items() if now - v > 3600]
+    for k in keys_to_delete:
+        del recent_errors_cache[k]
+        
+    if error_key in recent_errors_cache:
+        # Sudah dilaporkan dalam 1 jam terakhir, abaikan pengiriman ke admin
+        return
+        
+    recent_errors_cache[error_key] = now
+
+    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+    tb_string = "".join(tb_list)
+
     # Build error message
     message = (
         f"🚨 <b>BOT ERROR REPORT</b> 🚨\n\n"
