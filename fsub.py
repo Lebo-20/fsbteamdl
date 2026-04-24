@@ -30,7 +30,7 @@ BACKUP_CHANNEL_ID = -1002549194754  # ID Channel untuk backup
 LOG_CHANNEL_ID = -1003573270991     # Bisa sama atau beda
 PRICE_PER_DAY = 1000
 BOT_USERNAME = "ShortTeamDl_bot"
-START_IMAGE_URL = "https://i.ibb.co.com/zHhMv8Bf/IMG-20260424-WA0001.jpg" # URL Gambar /start
+START_IMAGE_URL = "https://iili.io/B6dpcqg.png" # URL Gambar /start
 # Harga paket VIP Limited
 VIP_LIMITED_1K_PRICE = 1000   # 1 hari, 2x lihat
 VIP_LIMITED_3K_PRICE = 3000   # 3 hari, 6x lihat
