@@ -1054,59 +1054,49 @@ async def tarikdata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(f"❌ <b>Terjadi kesalahan:</b> {e}", parse_mode=ParseMode.HTML)
 
 # ===================== /listvip - LIST MEMBER VIP AKTIF =====================
-async def listvip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler untuk perintah /listvip - menampilkan daftar member VIP (admin only)"""
+async def show_vip_list(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 1):
+    """Fungsi helper untuk menampilkan daftar member VIP dengan paginasi"""
+    query = update.callback_query
     user = update.effective_user
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ Perintah ini hanya untuk admin!")
-        return
-
-    msg = await update.message.reply_text("🔄 <b>Sedang mengambil data member VIP...</b>", parse_mode=ParseMode.HTML)
+    
+    items_per_page = 20
+    offset = (page - 1) * items_per_page
     
     try:
         with get_db() as conn:
             cursor = conn.cursor()
-            # Gunakan query yang lebih santai untuk format tanggal
+            # Ambil total member VIP (yang punya tanggal kadaluarsa di masa depan)
+            cursor.execute("""
+                SELECT COUNT(*) as total FROM users 
+                WHERE (vip_until > datetime('now'))
+                   OR (vip_limited_until > datetime('now'))
+            """)
+            total_vips = cursor.fetchone()['total']
+            
+            # Ambil data sesuai halaman
             cursor.execute("""
                 SELECT user_id, first_name, username, vip_until, vip_limited_until, vip_type
                 FROM users 
-                WHERE (vip_until IS NOT NULL AND vip_until != '')
-                   OR (vip_limited_until IS NOT NULL AND vip_limited_until != '')
+                WHERE (vip_until > datetime('now'))
+                   OR (vip_limited_until > datetime('now'))
                 ORDER BY vip_until DESC, vip_limited_until DESC
-                LIMIT 100
-            """)
-            all_vips = cursor.fetchall()
-        
-        if not all_vips:
-            await msg.edit_text("❌ <b>Belum ada data member VIP di database.</b>", parse_mode=ParseMode.HTML)
-            return
-
-        now = datetime.now()
-        active_vips = []
-        
-        for m in all_vips:
-            is_active = False
-            # Cek manual di Python agar lebih akurat dengan format ISO
-            try:
-                if m['vip_until']:
-                    exp = datetime.fromisoformat(m['vip_until'].replace('Z', '+00:00'))
-                    if exp > now: is_active = True
-                if not is_active and m['vip_limited_until']:
-                    exp = datetime.fromisoformat(m['vip_limited_until'].replace('Z', '+00:00'))
-                    if exp > now: is_active = True
-            except:
-                # Jika format error, anggap aktif saja daripada tidak tampil
-                is_active = True
+                LIMIT ? OFFSET ?
+            """, (items_per_page, offset))
+            vip_members = cursor.fetchall()
             
-            if is_active:
-                active_vips.append(m)
-
-        if not active_vips:
-            await msg.edit_text("✅ <b>Tidak ada member VIP yang masa aktifnya masih berlaku.</b>", parse_mode=ParseMode.HTML)
+        if not vip_members and page == 1:
+            text = "❌ <b>Belum ada member VIP aktif.</b>"
+            if query: await query.answer(text, show_alert=True)
+            else: await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return
 
-        text = f"💎 <b>LIST MEMBER VIP AKTIF ({len(active_vips)})</b>\n\n"
-        for i, m in enumerate(active_vips[:50], 1): # Tampilkan 50 saja agar tidak kepanjangan
+        total_pages = (total_vips + items_per_page - 1) // items_per_page
+        
+        text = f"💎 <b>LIST MEMBER VIP AKTIF</b>\n"
+        text += f"Halaman: <b>{page} / {total_pages}</b> (Total: {total_vips})\n\n"
+        
+        for i, m in enumerate(vip_members, 1):
+            idx = offset + i
             name = m['first_name'] or "User"
             uname = f"(@{m['username']})" if m['username'] else ""
             v_type = m['vip_type'] or "REGULAR"
@@ -1114,15 +1104,34 @@ async def listvip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             exp_str = m['vip_until'] or m['vip_limited_until']
             expiry = exp_str[:10] if exp_str else "???"
             
-            text += f"{i}. <b>{name}</b> {uname}\n   └ ID: <code>{m['user_id']}</code> | {v_type} | Exp: {expiry}\n"
+            text += f"{idx}. <b>{name}</b> {uname}\n   └ ID: <code>{m['user_id']}</code> | {v_type} | s/d {expiry}\n"
 
-        if len(active_vips) > 50:
-            text += f"\n<i>...dan {len(active_vips) - 50} member lainnya.</i>"
-
-        await msg.edit_text(text, parse_mode=ParseMode.HTML)
+        # Navigasi
+        keyboard = []
+        nav_row = []
+        if page > 1:
+            nav_row.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"admin_list_vip_page_{page-1}"))
+        if page < total_pages:
+            nav_row.append(InlineKeyboardButton("Next ➡️", callback_data=f"admin_list_vip_page_{page+1}"))
         
+        if nav_row:
+            keyboard.append(nav_row)
+            
+        keyboard.append([InlineKeyboardButton("🔙 Kembali ke Panel", callback_data="admin_panel")])
+
+        if query:
+            await safe_edit_message(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        else:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+            
     except Exception as e:
-        await msg.edit_text(f"❌ <b>Terjadi kesalahan:</b> {e}", parse_mode=ParseMode.HTML)
+        logger.error(f"Error in show_vip_list: {e}")
+        if query: await query.answer(f"Error: {e}", show_alert=True)
+        else: await update.message.reply_text(f"❌ Terjadi kesalahan: {e}")
+
+async def listvip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk perintah /listvip"""
+    await show_vip_list(update, context, page=1)
 
 # ===================== /redeem - REDEEM KODE VIP =====================
 async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3755,37 +3764,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "admin_list_vip" and is_admin(user.id):
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT user_id, first_name, username, vip_until, vip_limited_until, vip_type
-                FROM users 
-                WHERE vip_until > datetime('now') 
-                   OR vip_limited_until > datetime('now')
-                ORDER BY vip_until DESC, vip_limited_until DESC
-                LIMIT 50
-            """)
-            vip_members = cursor.fetchall()
-            
-        if not vip_members:
-            await query.answer("Belum ada member VIP aktif.", show_alert=True)
-            return
-
-        text = "💎 <b>DAFTAR MEMBER VIP AKTIF (50 Terbaru)</b>\n\n"
-        for i, m in enumerate(vip_members, 1):
-            name = m['first_name'] or "User"
-            uname = f"(@{m['username']})" if m['username'] else ""
-            
-            v_type = m['vip_type'] or "REGULAR"
-            if m['vip_until']:
-                expiry = m['vip_until'][:10]
-            else:
-                expiry = m['vip_limited_until'][:10]
-                
-            text += f"{i}. <b>{name}</b> {uname}\n   └ ID: <code>{m['user_id']}</code> | {v_type} | s/d {expiry}\n"
-            
-        keyboard = [[InlineKeyboardButton("🔙 Kembali", callback_data="admin_panel")]]
-        await safe_edit_message(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await show_vip_list(update, context, page=1)
+        
+    elif data.startswith("admin_list_vip_page_") and is_admin(user.id):
+        page = int(data.split("_")[4])
+        await show_vip_list(update, context, page=page)
     
     elif data == "admin_check_user" and is_admin(user.id):
         context.user_data["admin_mode"] = "waiting_user_id"
