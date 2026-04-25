@@ -271,3 +271,42 @@ def sync_stat_view(video_id: int, video_code: str, user_id: int, metadata: Optio
         })
     except Exception as e:
         logger.error(f"[Firebase] Gagal sync stat view: {e}")
+
+# == REDEEM CODES ==
+
+def sync_redeem_code_create(code: str, data: Dict[str, Any]):
+    """
+    Sync saat kode redeem baru dibuat
+    """
+    _safe_sync('redeem_codes', code, data)
+
+def sync_redeem_code_delete(code: str):
+    """
+    Hapus kode redeem dari Firebase
+    """
+    if not _firebase_ready or _db is None:
+        return
+    try:
+        _db.collection('redeem_codes').document(code).delete()
+        logger.info(f"[Firebase] Kode redeem {code} dihapus")
+    except Exception as e:
+        logger.error(f"[Firebase] Gagal hapus kode redeem {code}: {e}")
+
+# == SOURCE GROUPS ==
+
+def sync_source_group_create(chat_id: int, data: Dict[str, Any]):
+    """
+    Sync saat grup sumber baru ditambahkan
+    """
+    _safe_sync('source_groups', str(chat_id), data)
+
+def sync_source_group_delete(chat_id: int):
+    """
+    Hapus grup sumber dari Firebase
+    """
+    if not _firebase_ready or _db is None:
+        return
+    try:
+        _db.collection('source_groups').document(str(chat_id)).delete()
+    except Exception as e:
+        logger.error(f"[Firebase] Gagal hapus source group {chat_id}: {e}")

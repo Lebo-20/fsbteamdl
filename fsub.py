@@ -1285,7 +1285,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     get_user_or_create(user.id, user.username, user.first_name)
     
     if args and args[0]:
-        video_code = args[0]
+        payload = args[0]
+        logger.info(f"Processing start payload: {payload}")
+        
+        if payload.lower() in ["buyvip", "vip"]:
+            return await vip_command(update, context)
+            
+        video_code = payload
         logger.info(f"Processing video code: {video_code}")
         
         with get_db() as conn:
@@ -1298,6 +1304,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 cursor.execute("UPDATE videos SET view_count = view_count + 1 WHERE id = ?", (video['id'],))
                 conn.commit()
+                
+                # [FIREBASE] Sync view count
+                firebase_sync.sync_video_view_count(video['code'], video['view_count'] + 1)
                 
                 # Cek akses
                 can_access = False
@@ -1343,6 +1352,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         VALUES (?, ?, ?, ?)
                     """, (video['id'], user.id, 'VIEW', metadata))
                     conn.commit()
+                    
+                    # [FIREBASE] Sync stat view
+                    firebase_sync.sync_stat_view(video['id'], video['code'], user.id, metadata)
                     
                     # Terapkan proteksi konten sesuai setting admin
                     is_protected = (get_setting('protect_content') == 'ON')
@@ -1734,7 +1746,7 @@ async def perform_search(update: Update, context: ContextTypes.DEFAULT_TYPE, key
             f"❌ <b>Video tidak ditemukan!</b>\n\n"
             f"Maaf, video dengan kata kunci '<code>{keyword}</code>' belum tersedia.\n"
             f"Permintaan Anda sudah diteruskan ke tim admin.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            reply_markup=keyboard,
             parse_mode=ParseMode.HTML
         )
         return
@@ -3109,6 +3121,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 """, (video['id'], user.id, 'VIEW', access_reason))
                 conn.commit()
                 
+                # [FIREBASE] Sync stat view
+                firebase_sync.sync_stat_view(video['id'], video['code'], user.id, access_reason)
+                
                 # Edit poster message media into the video/document!
                 try:
                     if video['file_type'] == 'video':
@@ -3140,6 +3155,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor = conn.cursor()
             cursor.execute("UPDATE videos SET access_type = 'FREE' WHERE id = ?", (video_id,))
             conn.commit()
+            
+            # [FIREBASE] Sync access type change
+            cursor.execute("SELECT code FROM videos WHERE id = ?", (video_id,))
+            v_code = cursor.fetchone()
+            if v_code:
+                firebase_sync.sync_video_access_type(v_code['code'], 'FREE')
             
             cursor.execute("SELECT * FROM videos WHERE id = ?", (video_id,))
             video = cursor.fetchone()
@@ -3178,6 +3199,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor = conn.cursor()
             cursor.execute("UPDATE videos SET access_type = 'VIP' WHERE id = ?", (video_id,))
             conn.commit()
+            
+            # [FIREBASE] Sync access type change
+            cursor.execute("SELECT code FROM videos WHERE id = ?", (video_id,))
+            v_code = cursor.fetchone()
+            if v_code:
+                firebase_sync.sync_video_access_type(v_code['code'], 'VIP')
             
             cursor.execute("SELECT * FROM videos WHERE id = ?", (video_id,))
             video = cursor.fetchone()
@@ -3299,6 +3326,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if video:
                 cursor.execute("DELETE FROM videos WHERE id = ?", (video_id,))
                 conn.commit()
+                
+                # [FIREBASE] Sync video delete
+                firebase_sync.sync_video_delete(video['code'])
                 
                 if video['log_message_id']:
                     try:
@@ -3562,7 +3592,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎁 *Punya Kode Redeem?*\n"
             "Klik tombol Masukkan Kode Redeem di bawah.\n\n"
             "🔰 *VIP Limited* - Untuk mencoba\n"
-            "• 1 Hari: Rp 1.000 (2x lihat)\n\n"
+            "• 1 Hari - Rp 1.000 (2x lihat)\n\n"
             "💎 *VIP Regular* - Full Akses\n"
             "• Harga: Rp 1.000/hari\n"
             "• Akses tanpa batas",
@@ -3850,6 +3880,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         source_id = int(data.split("_")[-1])
         with get_db() as conn:
             cursor = conn.cursor()
+            # [FIREBASE] Sync source group delete
+            cursor.execute("SELECT chat_id FROM source_groups WHERE id = ?", (source_id,))
+            s_grp = cursor.fetchone()
+            if s_grp:
+                firebase_sync.sync_source_group_delete(s_grp['chat_id'])
+                
             cursor.execute("DELETE FROM source_groups WHERE id = ?", (source_id,))
             conn.commit()
         await query.answer("✅ Grup berhasil dihapus!")
@@ -4351,6 +4387,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("UPDATE users SET vip_until = ? WHERE user_id = ?", (new_vip.isoformat(), target_user_id))
             conn.commit()
             
+            # [FIREBASE] Sync admin add VIP
+            firebase_sync.sync_user_vip_update(target_user_id, vip_until_iso=new_vip.isoformat())
+            
             try:
                 await context.bot.send_message(
                     chat_id=target_user_id,
@@ -4415,6 +4454,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """, (new_limited.isoformat(), views, target_user_id))
             conn.commit()
             
+            # [FIREBASE] Sync admin add VIP
+            firebase_sync.sync_user_vip_update(
+                target_user_id,
+                vip_until_iso=None,
+                vip_limited_until_iso=new_limited.isoformat(),
+                vip_limited_views=0,
+                vip_limited_total_views=views
+            )
+            
             try:
                 await context.bot.send_message(
                     chat_id=target_user_id,
@@ -4464,6 +4512,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("UPDATE users SET vip_until = NULL WHERE user_id = ?", (target_user_id,))
             conn.commit()
             
+            # [FIREBASE] Sync remove VIP
+            firebase_sync.sync_user_vip_clear(target_user_id, clear_regular=True)
+            
             try:
                 await context.bot.send_message(
                     chat_id=target_user_id,
@@ -4511,6 +4562,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor = conn.cursor()
             cursor.execute("UPDATE users SET vip_limited_until = NULL, vip_limited_views = 0 WHERE user_id = ?", (target_user_id,))
             conn.commit()
+            
+            # [FIREBASE] Sync remove VIP
+            firebase_sync.sync_user_vip_clear(target_user_id, clear_limited=True)
             
             try:
                 await context.bot.send_message(
@@ -5277,6 +5331,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """, (reject_reason, user.id, datetime.now().isoformat(), payment_id))
             conn.commit()
             
+            # [FIREBASE] Sync payment rejection
+            firebase_sync.sync_payment_rejected(payment_id, approved_by=user.id, reason=reject_reason)
+            
             try:
                 await context.bot.send_message(
                     chat_id=payment['user_id'],
@@ -5339,6 +5396,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         VALUES (?, ?, ?, ?, ?)
                     """, (chat_id, thread_id, title, link, 1 if is_admin_bot else 0))
                     conn.commit()
+                    
+                    # [FIREBASE] Sync source group
+                    firebase_sync.sync_source_group_create(chat_id, {
+                        'chat_id': chat_id,
+                        'thread_id': thread_id,
+                        'title': title,
+                        'link': link,
+                        'is_active': 1 if is_admin_bot else 0,
+                        'created_at': datetime.now().isoformat()
+                    })
                 
                 await update.message.reply_text(
                     f"✅ <b>GRUP BERHASIL DIDAFTARKAN!</b>\n\n"
@@ -5346,7 +5413,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🆔 Chat ID: <code>{chat_id}</code>\n"
                     f"🧵 Topic ID: <code>{thread_id or 'Grup Biasa'}</code>\n"
                     f"🛡 Status Admin: {'✅ Aktif' if is_admin_bot else '❌ Bukan Admin'}\n\n"
-                    f"Bot akan mulai membaca video dari grup ini secara otomatis.",
+                    f"Bot akan mulai membaca video otomatis dari grup ini.",
                     parse_mode=ParseMode.HTML
                 )
             else:
@@ -5356,6 +5423,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # CEK STATE WAITING USER ID
+    if context.user_data.get("admin_mode") == "waiting_user_id":
 
         try:
             target_user_id = int(update.message.text.strip())
@@ -5593,11 +5661,15 @@ async def check_expired_vip(context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("SELECT user_id FROM users WHERE vip_until < datetime('now') AND vip_until IS NOT NULL")
             expired_regular = cursor.fetchall()
             cursor.execute("UPDATE users SET vip_until = NULL WHERE vip_until < datetime('now')")
+            for user in expired_regular:
+                firebase_sync.sync_user_vip_clear(user['user_id'], clear_regular=True)
             
             # 2. Cek VIP Limited expired
             cursor.execute("SELECT user_id FROM users WHERE vip_limited_until < datetime('now') AND vip_limited_until IS NOT NULL")
             expired_limited = cursor.fetchall()
             cursor.execute("UPDATE users SET vip_limited_until = NULL, vip_limited_views = 0 WHERE vip_limited_until < datetime('now')")
+            for user in expired_limited:
+                firebase_sync.sync_user_vip_clear(user['user_id'], clear_limited=True)
             
             # 3. BERSIHKAN KODE REDEEM EXPIRED & LIMIT (BARU)
             cursor.execute("""
@@ -5693,6 +5765,7 @@ def main():
     application.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("status", status_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("vip", vip_command, filters=filters.ChatType.PRIVATE))
+    application.add_handler(CommandHandler("buyvip", vip_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("cancel", cancel_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("privacy", privacy_command, filters=filters.ChatType.PRIVATE))
     application.add_handler(CommandHandler("search", search_command, filters=filters.ChatType.PRIVATE))
