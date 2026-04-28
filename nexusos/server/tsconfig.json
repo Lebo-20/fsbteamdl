@@ -8,7 +8,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "moduleResolution": "NodeNext",
+    "ignoreDeprecations": "5.0"
   },
   "include": ["src/**/*"]
 }
