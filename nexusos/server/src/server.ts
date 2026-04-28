@@ -804,8 +804,9 @@ app.get('/api/reelala/episodes/:id', async (req, res) => {
     const serverHost = req.headers.host || '127.0.0.1:5001';
     const mapped = rawList.map((ep: any) => {
       const rawUrl = ep.hls_url || ep.video_url || ep.streamUrl || ep.stream_url || ep.url || '';
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
       const proxiedUrl = rawUrl 
-        ? `http://${serverHost}/api/proxy/video?url=${encodeURIComponent(rawUrl)}&platform=REELALA`
+        ? `${protocol}://${serverHost}/api/proxy/video?url=${encodeURIComponent(rawUrl)}&platform=REELALA`
         : '';
       return {
         id: ep.chapter_id || ep.id,
@@ -844,7 +845,8 @@ app.get('/api/reelala/stream/:id/:ep', async (req, res) => {
     
     if (rawUrl) {
       const serverHost = req.headers.host || '127.0.0.1:5001';
-      const proxiedUrl = `http://${serverHost}/api/proxy/video?url=${encodeURIComponent(rawUrl)}&platform=REELALA`;
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const proxiedUrl = `${protocol}://${serverHost}/api/proxy/video?url=${encodeURIComponent(rawUrl)}&platform=REELALA`;
       console.log(`[Reelala] Stream EP${epNum}:`, rawUrl.substring(0, 60) + '...');
       res.json({ data: { url: proxiedUrl }, platform: 'REELALA' });
     } else {
@@ -933,7 +935,8 @@ app.get('/api/reelshort/stream/:id/:ep', async (req, res) => {
       
       if (bestVideo && bestVideo.PlayURL) {
         const serverHost = req.headers.host || '127.0.0.1:5001';
-        const proxiedUrl = `http://${serverHost}/api/proxy/video?url=${encodeURIComponent(bestVideo.PlayURL)}`;
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        const proxiedUrl = `${protocol}://${serverHost}/api/proxy/video?url=${encodeURIComponent(bestVideo.PlayURL)}`;
         res.json({ data: { url: proxiedUrl }, platform: 'REELSHORT' });
       } else {
         res.json({ data: { url: '' }, error: 'No video URL found' });
@@ -1047,7 +1050,8 @@ app.get('/api/dramabox/episodes/:id', async (req, res) => {
     const serverHost = req.headers.host || '127.0.0.1:5001';
     const mapped = list.map((ep: any) => {
       const epIndex = ep.chapterIndex + 1;
-      const proxiedUrl = `http://${serverHost}/api/proxy/video?url=${encodeURIComponent(
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const proxiedUrl = `${protocol}://${serverHost}/api/proxy/video?url=${encodeURIComponent(
         `${dramaboxBase}/api/drama/${id}/stream?episode=${epIndex}&quality=1080`
       )}&platform=DRAMABOX`;
       // We'll build streamUrl on demand via /stream route instead
@@ -1099,7 +1103,8 @@ app.get('/api/dramabox/stream/:id/:ep', async (req, res) => {
     const videoUrl = match?.url || match?.videoUrl || match?.stream_url || '';
     if (videoUrl) {
       const serverHost = req.headers.host || '127.0.0.1:5001';
-      const proxiedUrl = `http://${serverHost}/api/proxy/video?url=${encodeURIComponent(videoUrl)}&platform=DRAMABOX`;
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const proxiedUrl = `${protocol}://${serverHost}/api/proxy/video?url=${encodeURIComponent(videoUrl)}&platform=DRAMABOX`;
       console.log(`[DramaBox] Stream EP${epNum}:`, videoUrl.substring(0, 60) + '...');
       res.json({ data: { url: proxiedUrl }, platform: 'DRAMABOX' });
     } else {
@@ -1244,7 +1249,8 @@ app.get('/api/shortmax/stream/:id/:ep', async (req, res) => {
     const videoUrl = video[`video_${q}`] || video.video_1080 || video.video_720 || video.video_480 || '';
     if (videoUrl) {
       const serverHost = req.headers.host || '127.0.0.1:5001';
-      const proxiedUrl = `http://${serverHost}/api/proxy/video?url=${encodeURIComponent(videoUrl)}`;
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const proxiedUrl = `${protocol}://${serverHost}/api/proxy/video?url=${encodeURIComponent(videoUrl)}`;
       res.json({ data: { url: proxiedUrl }, platform: 'SHORTMAX' });
     } else {
       res.json({ data: { url: '' }, error: 'No video URL found' });
@@ -1269,7 +1275,8 @@ const proxyMelloloImage = (url: string, reqHost = '127.0.0.1:5001') => {
       .replace(/\.heic$/i, '.jpeg')
       .replace(/\.heif$/i, '.jpeg');
   }
-  return `http://${reqHost}/api/proxy/image?url=${encodeURIComponent(url)}`;
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  return `${protocol}://${reqHost}/api/proxy/image?url=${encodeURIComponent(url)}`;
 };
 
 // Helper to map Melolo book to normalized format
@@ -1448,7 +1455,8 @@ app.get('/api/melolo/stream/:id/:ep', async (req, res) => {
     const match = episodes.find((e: any) => e.index === epNum) || episodes[epNum - 1];
     if (match && match.stream_url) {
       const serverHost = req.headers.host || '127.0.0.1:5001';
-      const proxiedUrl = `http://${serverHost}/api/proxy/video?url=${encodeURIComponent(match.stream_url)}`;
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const proxiedUrl = `${protocol}://${serverHost}/api/proxy/video?url=${encodeURIComponent(match.stream_url)}`;
       res.json({ data: { url: proxiedUrl }, platform: 'MELOLO' });
     } else {
       res.json({ data: { url: '' }, error: 'Episode not found' });
@@ -1491,7 +1499,8 @@ app.get('/api/moboreels/stream/:id/:ep', async (req, res) => {
     }
 
     const serverHost = req.headers.host || '127.0.0.1:5001';
-    const proxiedUrl = `http://${serverHost}/api/proxy/video?url=${encodeURIComponent(videoUrl)}`;
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const proxiedUrl = `${protocol}://${serverHost}/api/proxy/video?url=${encodeURIComponent(videoUrl)}`;
     
     res.json({ data: { url: proxiedUrl }, platform: 'MOBOREELS' });
   } catch (error: any) {
