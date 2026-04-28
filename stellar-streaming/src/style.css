@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --color-stellar-purple: #A855F7;
-  --color-stellar-dark: #131315;
+  --color-teamdl-purple: #A855F7;
+  --color-teamdl-dark: #131315;
   --color-glass: rgba(255, 255, 255, 0.05);
   --color-glass-border: rgba(255, 255, 255, 0.1);
   --font-be-vietnam: 'Be Vietnam Pro', sans-serif;
@@ -10,7 +10,7 @@
 
 :root {
   font-family: var(--font-be-vietnam);
-  background-color: var(--color-stellar-dark);
+  background-color: var(--color-teamdl-dark);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -27,7 +27,7 @@ body {
   border: 1px solid var(--color-glass-border);
 }
 
-.stellar-gradient {
+.teamdl-gradient {
   background: linear-gradient(to top, rgba(19, 19, 21, 1) 0%, rgba(19, 19, 21, 0) 100%);
 }
 
@@ -38,4 +38,52 @@ body {
 /* Hide scrollbar */
 ::-webkit-scrollbar {
   display: none;
+}
+
+/* Water drop loading animation */
+.water-drop {
+  width: 12px;
+  height: 16px;
+  background-color: var(--color-teamdl-purple);
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  animation: fall 1.2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 10px rgba(168,85,247,0.6);
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes fall {
+  0% { transform: translateY(-30px) scaleY(0.5); opacity: 0; }
+  50% { transform: translateY(0px) scaleY(1.2); opacity: 1; }
+  100% { transform: translateY(30px) scaleY(0.3); opacity: 0; }
+}
+
+.water-ripple {
+  width: 30px;
+  height: 8px;
+  background: rgba(168,85,247,0.3);
+  border-radius: 50%;
+  position: absolute;
+  bottom: 0px;
+  animation: ripple 1.2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes ripple {
+  0% { transform: scale(0.2); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+.loading-text {
+  font-weight: 700;
+  color: var(--color-teamdl-purple);
+  letter-spacing: 3px;
+  animation: pulse-text 1.5s infinite ease-in-out;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  text-shadow: 0 0 10px rgba(168,85,247,0.4);
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
 }
