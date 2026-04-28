@@ -40,7 +40,7 @@ import {
   Tv,
   Trash2,
   RefreshCw,
-  Github
+  Globe
 } from 'lucide-react';
 
 // Types
@@ -1116,7 +1116,7 @@ function AdminConsole({ logs, onBack, settings, onUpdateSetting, adminId }: {
                   onClick={() => handleUpdate('full')}
                   className="flex flex-col items-center justify-center p-4 glass rounded-2xl border-white/5 hover:bg-white/5 transition-all space-y-2 disabled:opacity-50"
                 >
-                  <Github size={20} className={updating ? 'animate-pulse' : ''} />
+                  <Globe size={20} className={updating ? 'animate-pulse' : ''} />
                   <span className="text-[10px] font-bold">Full Rebuild</span>
                 </button>
               </div>
