@@ -4634,9 +4634,101 @@ app.get('/api/microdrama/subtitle/:id/:ep', async (req, res) => {
   res.json({ data: { list: [] }, platform: 'MICRODRAMA' });
 });
 
+// --- Missing Platforms Generic Routes ---
+const createGenericRoutes = (platformName: string, envBase: string | undefined, envToken: string | undefined) => {
+  const base = envBase || `https://captain.sapimu.au/${platformName.toLowerCase()}`;
+  const token = envToken || '5cf419a4c7fb1c8585314b9f797bf77e7b10a705f32c91aac65b901559780e12';
+
+  app.get(`/api/${platformName.toLowerCase()}/home`, async (req, res) => {
+    try {
+      const { page = 1, limit = 30, lang = 'id' } = req.query;
+      const response = await axios.get(`${base}/home`, {
+        params: { page, limit, lang },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      res.json({ dramas: response.data?.dramas || [], platform: platformName });
+    } catch (error: any) {
+      res.json({ dramas: [], platform: platformName, error: error.message });
+    }
+  });
+
+  app.get(`/api/${platformName.toLowerCase()}/search`, async (req, res) => {
+    try {
+      const { q = '', lang = 'id' } = req.query;
+      const response = await axios.get(`${base}/search`, {
+        params: { q, lang },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      res.json({ dramas: response.data?.dramas || [], platform: platformName });
+    } catch (error: any) {
+      res.json({ dramas: [], platform: platformName, error: error.message });
+    }
+  });
+
+  app.get(`/api/${platformName.toLowerCase()}/episodes/:id`, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { lang = 'id' } = req.query;
+      const response = await axios.get(`${base}/drama/${id}`, {
+        params: { lang },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = response.data || {};
+      const list = (data.episodes || []).map((ep: any) => ({
+        id: ep.id || ep.number,
+        title: ep.title || `Episode ${ep.number}`,
+        episNum: ep.number,
+        cover: data.cover || '',
+        isVip: !ep.free
+      }));
+      res.json({ data: { list, series: data }, platform: platformName });
+    } catch (error: any) {
+      res.json({ data: { list: [], series: {} }, platform: platformName });
+    }
+  });
+
+  app.get(`/api/${platformName.toLowerCase()}/stream/:id/:ep`, async (req, res) => {
+    try {
+      const { id, ep } = req.params;
+      const { quality = 720, lang = 'id' } = req.query;
+      const response = await axios.get(`${base}/drama/${id}/episode/${ep}`, {
+        params: { quality, lang },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const epData = response.data || {};
+      const streamUrl = epData.video || epData.url || '';
+      if (streamUrl) {
+        const reqHost = req.headers.host || '127.0.0.1:5001';
+        const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
+        const proxiedUrl = `${protocol}://${reqHost}/api/proxy/video?url=${encodeURIComponent(streamUrl)}&platform=${platformName}`;
+        res.json({ data: { url: proxiedUrl }, platform: platformName });
+      } else {
+        res.json({ data: { url: '' }, error: 'No video URL found' });
+      }
+    } catch (error: any) {
+      res.json({ data: { url: '' }, platform: platformName });
+    }
+  });
+};
+
+createGenericRoutes('MICRODRAMA', process.env.MICRODRAMA_BASE_URL, process.env.MICRODRAMA_TOKEN);
+createGenericRoutes('IDRAMA', process.env.IDRAMA_BASE_URL, process.env.IDRAMA_TOKEN);
+createGenericRoutes('STARSHORT', process.env.STARSHORT_BASE_URL, process.env.STARSHORT_TOKEN);
+createGenericRoutes('GOODSHORT', process.env.GOODSHORT_BASE_URL, process.env.GOODSHORT_TOKEN);
+createGenericRoutes('SHORTBOX', process.env.SHORTBOX_BASE_URL, process.env.SHORTBOX_TOKEN);
+createGenericRoutes('DRAMAWAVE', process.env.DRAMAWAVE_BASE_URL, process.env.DRAMAWAVE_TOKEN);
+createGenericRoutes('VELOLO', process.env.VELOLO_BASE_URL, process.env.VELOLO_TOKEN);
+createGenericRoutes('HAPPYSHORT', process.env.HAPPYSHORT_BASE_URL, process.env.HAPPYSHORT_TOKEN);
+createGenericRoutes('RAPIDTV', process.env.RAPIDTV_BASE_URL, process.env.RAPIDTV_TOKEN);
+createGenericRoutes('STARSHORTTV', process.env.STARSHORTTV_BASE_URL, process.env.STARSHORTTV_TOKEN);
+createGenericRoutes('REELIFE', process.env.REELIFE_BASE_URL, process.env.REELIFE_TOKEN);
+createGenericRoutes('STARDUSTTV', process.env.STARDUSTTV_BASE_URL, process.env.STARDUSTTV_TOKEN);
+createGenericRoutes('SHORTSWAVE', process.env.SHORTSWAVE_BASE_URL, process.env.SHORTSWAVE_TOKEN);
+
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
+
 
 // Graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
