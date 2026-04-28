@@ -64,8 +64,8 @@ const DEMO_VIDEOS: Video[] = [
   { id: 4, title: "Ancient Love Song", poster: "https://images.unsplash.com/photo-1533929736458-ca588d08c8be?q=80&w=1000", episodes: 30, likes: "400K" },
 ];
 
-const SERVER_BASE = (typeof window !== 'undefined' && (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'))
-  ? `${window.location.origin}/api`
+const SERVER_BASE = (typeof window !== 'undefined' && (window.location.hostname.includes('vercel.app') || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')))
+  ? 'https://teamdl.web.id/api'
   : 'http://localhost:5001/api';
 const getPlatformApi = (platform?: string) => `${SERVER_BASE}/${(platform || 'BILITV').toLowerCase()}`;
 // Convert relative /api/proxy/image paths from backend into absolute URLs
