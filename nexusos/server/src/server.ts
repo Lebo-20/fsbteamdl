@@ -1266,7 +1266,7 @@ const melloloBase = process.env.MELOLO_BASE_URL;
 const melloloToken = process.env.MELOLO_TOKEN;
 
 // Helper to proxy Melolo image URLs (HEIC → JPEG via server)
-const proxyMelloloImage = (url: string, reqHost = '127.0.0.1:5001') => {
+const proxyMelloloImage = (url: string, reqHost = '127.0.0.1:5001', protocol = 'http') => {
   if (!url) return '';
   if (url.includes('fizzopic.org') || url.includes('ibyteimg.com')) {
     return url.split('?')[0]
@@ -1275,18 +1275,17 @@ const proxyMelloloImage = (url: string, reqHost = '127.0.0.1:5001') => {
       .replace(/\.heic$/i, '.jpeg')
       .replace(/\.heif$/i, '.jpeg');
   }
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   return `${protocol}://${reqHost}/api/proxy/image?url=${encodeURIComponent(url)}`;
 };
 
 // Helper to map Melolo book to normalized format
-const mapMelloloBook = (b: any, reqHost?: string) => {
+const mapMelloloBook = (b: any, reqHost?: string, protocol = 'http') => {
   // Support both bookmall books (book_id/book_name/thumb_url) and series format
   const id = String(b.book_id || b.series_id || b.id || '');
   const title = b.book_name || b.title || b.name || '';
   const rawPoster = b.first_chapter_cover || b.thumb_url || b.cover || b.poster || '';
   // Proxy through image endpoint so HEIC renders in browser
-  const poster = rawPoster ? proxyMelloloImage(rawPoster, reqHost) : '';
+  const poster = rawPoster ? proxyMelloloImage(rawPoster, reqHost, protocol) : '';
   const episodes = b.serial_count || b.episode_count || b.total_episodes || 0;
   const rawCount = parseInt(String(b.read_count || b.play_count || 0));
   const likes = rawCount > 1000000 ? (rawCount / 1000000).toFixed(1) + 'M'
@@ -1330,10 +1329,10 @@ app.get('/api/melolo/home', async (req, res) => {
       return true;
     });
     
-    const reqHost = req.headers.host || '127.0.0.1:5001';
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     
     const dramas = await Promise.all(unique.map(async (b: any) => {
-      let mapped = mapMelloloBook(b, reqHost);
+      let mapped = mapMelloloBook(b, reqHost, protocol);
       if (!mapped.poster && mapped.id) {
         try {
           const bRes = await axios.get(`${melloloBase}/api/v1/book`, {
@@ -1343,7 +1342,7 @@ app.get('/api/melolo/home', async (req, res) => {
           const bData = bRes.data;
           const bCover = bData?.first_chapter_cover || bData?.cover || bData?.extra?.book_info?.first_chapter_cover || bData?.extra?.book_info?.thumb_url || bData?.extra?.book_info?.cover;
           if (bCover) {
-            mapped.poster = proxyMelloloImage(bCover, reqHost);
+            mapped.poster = proxyMelloloImage(bCover, reqHost, protocol);
           }
         } catch {}
       }
@@ -1368,9 +1367,10 @@ app.get('/api/melolo/search', async (req, res) => {
     });
     const list = response.data?.items || response.data?.series_list || response.data?.books || response.data?.results || [];
     const reqHost2 = req.headers.host || '127.0.0.1:5001';
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     
     const dramas = await Promise.all(list.map(async (b: any) => {
-      let mapped = mapMelloloBook(b, reqHost2);
+      let mapped = mapMelloloBook(b, reqHost2, protocol);
       if (!mapped.poster && mapped.id) {
         try {
           const bRes = await axios.get(`${melloloBase}/api/v1/book`, {
@@ -1380,7 +1380,7 @@ app.get('/api/melolo/search', async (req, res) => {
           const bData = bRes.data;
           const bCover = bData?.first_chapter_cover || bData?.cover || bData?.extra?.book_info?.first_chapter_cover || bData?.extra?.book_info?.thumb_url || bData?.extra?.book_info?.cover;
           if (bCover) {
-            mapped.poster = proxyMelloloImage(bCover, reqHost2);
+            mapped.poster = proxyMelloloImage(bCover, reqHost2, protocol);
           }
         } catch {}
       }
@@ -1422,15 +1422,16 @@ app.get('/api/melolo/episodes/:id', async (req, res) => {
     }
 
     const reqHost = req.headers.host || '127.0.0.1:5001';
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     if (series.cover) {
-      series.cover = proxyMelloloImage(series.cover, reqHost);
+      series.cover = proxyMelloloImage(series.cover, reqHost, protocol);
     }
 
     const list = episodes.map((ep: any) => ({
       id: ep.vid || String(ep.index),
       title: `Episode ${ep.index}`,
       episNum: ep.index,
-      cover: ep.cover ? proxyMelloloImage(ep.cover, reqHost) : '',
+      cover: ep.cover ? proxyMelloloImage(ep.cover, reqHost, protocol) : '',
       isVip: ep.need_unlock || ep.needUnlock || false
     }));
     
