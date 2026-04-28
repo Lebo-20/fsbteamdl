@@ -1746,7 +1746,7 @@ async def perform_search(update: Update, context: ContextTypes.DEFAULT_TYPE, key
             f"❌ <b>Video tidak ditemukan!</b>\n\n"
             f"Maaf, video dengan kata kunci '<code>{keyword}</code>' belum tersedia.\n"
             f"Permintaan Anda sudah diteruskan ke tim admin.",
-            reply_markup=keyboard,
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode=ParseMode.HTML
         )
         return
@@ -3508,7 +3508,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💰 Nominal: Rp {payment['amount']:,}\n\n"
             f"Silakan kirim alasan penolakan sebagai *balasan pesan ini*.\n\n"
             f"Contoh: Bukti transfer tidak valid / Nominal kurang.",
-            reply_markup=keyboard,
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode=ParseMode.MARKDOWN
         )
     
