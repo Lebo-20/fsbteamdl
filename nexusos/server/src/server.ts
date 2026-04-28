@@ -1329,7 +1329,8 @@ app.get('/api/melolo/home', async (req, res) => {
       return true;
     });
     
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const reqHost = req.headers.host || '127.0.0.1:5001';
+    const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
     
     const dramas = await Promise.all(unique.map(async (b: any) => {
       let mapped = mapMelloloBook(b, reqHost, protocol);
@@ -1367,7 +1368,7 @@ app.get('/api/melolo/search', async (req, res) => {
     });
     const list = response.data?.items || response.data?.series_list || response.data?.books || response.data?.results || [];
     const reqHost2 = req.headers.host || '127.0.0.1:5001';
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
     
     const dramas = await Promise.all(list.map(async (b: any) => {
       let mapped = mapMelloloBook(b, reqHost2, protocol);
@@ -1422,7 +1423,7 @@ app.get('/api/melolo/episodes/:id', async (req, res) => {
     }
 
     const reqHost = req.headers.host || '127.0.0.1:5001';
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
     if (series.cover) {
       series.cover = proxyMelloloImage(series.cover, reqHost, protocol);
     }
