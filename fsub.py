@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import time
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaVideo, InputMediaDocument
+from telegram.error import Forbidden, BadRequest
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
     filters, ContextTypes
@@ -409,10 +410,10 @@ async def delete_previous_message(update: Update, context: ContextTypes.DEFAULT_
         except Exception:
             pass
     # Hapus juga pesan user jika memungkinkan
-    try:
-        await update.message.delete()
-    except Exception:
-        pass
+    # try:
+    #     await update.message.delete()
+    # except Exception:
+    #     pass
 
 def generate_video_code(length: int = 8) -> str:
     """
@@ -2894,6 +2895,13 @@ async def process_broadcast(application: Application, broadcast_id: int):
                     conn.commit()
                     success_count += 1
                     
+                except Forbidden:
+                    logger.warning(f"User {item['user_id']} blocked the bot. Removing from database.")
+                    cursor.execute("DELETE FROM users WHERE user_id = ?", (item['user_id'],))
+                    cursor.execute("UPDATE broadcast_queue SET status = 'FAILED', error_message = 'BLOCKED' WHERE id = ?", (item['id'],))
+                    conn.commit()
+                    firebase_sync.sync_user_delete(item['user_id'])
+                    fail_count += 1
                 except Exception as e:
                     logger.error(f"Broadcast error to user {item['user_id']}: {e}")
                     cursor.execute("""
@@ -3450,6 +3458,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=payment['user_id'],
                     text=text
                 )
+            except Forbidden:
+                logger.warning(f"User {payment['user_id']} blocked bot during approval. Deleting user.")
+                with get_db() as conn_del:
+                    conn_del.cursor().execute("DELETE FROM users WHERE user_id = ?", (payment['user_id'],))
+                    conn_del.commit()
+                firebase_sync.sync_user_delete(payment['user_id'])
             except:
                 pass
         
@@ -5096,6 +5110,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML
             )
             await update.message.reply_text(f"✅ Pesan berhasil terkirim ke user <code>{target_id}</code>", parse_mode=ParseMode.HTML)
+        except Forbidden:
+            await update.message.reply_text(f"❌ <b>Gagal:</b> User <code>{target_id}</code> telah memblokir bot.\nMenghapus user dari database.", parse_mode=ParseMode.HTML)
+            with get_db() as conn_del:
+                conn_del.cursor().execute("DELETE FROM users WHERE user_id = ?", (target_id,))
+                conn_del.commit()
+            firebase_sync.sync_user_delete(target_id)
         except Exception as e:
             await update.message.reply_text(f"❌ Gagal mengirim pesan: {e}")
         return
@@ -5347,6 +5367,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ),
                     parse_mode=ParseMode.MARKDOWN
                 )
+            except Forbidden:
+                logger.warning(f"User {payment['user_id']} blocked bot during rejection. Deleting user.")
+                with get_db() as conn_del:
+                    conn_del.cursor().execute("DELETE FROM users WHERE user_id = ?", (payment['user_id'],))
+                    conn_del.commit()
+                firebase_sync.sync_user_delete(payment['user_id'])
             except Exception as e:
                 logger.error(f"Failed to send rejection: {e}")
             
@@ -5693,11 +5719,25 @@ async def check_expired_vip(context: ContextTypes.DEFAULT_TYPE):
             
             # Kirim notifikasi ke user (opsional)
             for user in expired_regular:
-                try: await context.bot.send_message(chat_id=user['user_id'], text="⚠️ Masa VIP Regular Anda telah berakhir!")
-                except: pass
+                try: 
+                    await context.bot.send_message(chat_id=user['user_id'], text="⚠️ Masa VIP Regular Anda telah berakhir!")
+                except Forbidden:
+                    with get_db() as conn_del:
+                        conn_del.cursor().execute("DELETE FROM users WHERE user_id = ?", (user['user_id'],))
+                        conn_del.commit()
+                    firebase_sync.sync_user_delete(user['user_id'])
+                except: 
+                    pass
             for user in expired_limited:
-                try: await context.bot.send_message(chat_id=user['user_id'], text="⚠️ Masa VIP Limited Anda telah berakhir!")
-                except: pass
+                try: 
+                    await context.bot.send_message(chat_id=user['user_id'], text="⚠️ Masa VIP Limited Anda telah berakhir!")
+                except Forbidden:
+                    with get_db() as conn_del:
+                        conn_del.cursor().execute("DELETE FROM users WHERE user_id = ?", (user['user_id'],))
+                        conn_del.commit()
+                    firebase_sync.sync_user_delete(user['user_id'])
+                except: 
+                    pass
                 
     except Exception as e:
         logger.error(f"Error in check_expired_vip: {e}")

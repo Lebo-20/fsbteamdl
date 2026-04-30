@@ -1,5 +1,5 @@
 const fs = require('fs');
-let file = fs.readFileSync('c:/BOT TEAM DL/fsub_bot/nexusos/server/src/server.ts', 'utf8');
+let file = fs.readFileSync('./src/server.ts', 'utf8');
 
 const startTag = '// --- GoodShort Routes ---';
 const endTag = '// --- DramaWave Routes ---';
@@ -226,5 +226,5 @@ app.get('/api/goodshort/proxy/ts', async (req, res) => {
 `;
 
 file = file.substring(0, start) + newGoodShortCode + file.substring(end);
-fs.writeFileSync('c:/BOT TEAM DL/fsub_bot/nexusos/server/src/server.ts', file);
+fs.writeFileSync('./src/server.ts', file);
 console.log('Successfully replaced GoodShort routes.');

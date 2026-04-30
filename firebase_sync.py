@@ -110,6 +110,18 @@ def sync_user_create(user_id: int, username: str, first_name: str):
         'joined_at': datetime.now()
     })
 
+def sync_user_delete(user_id: int):
+    """
+    Hapus user dari Firebase (misal: karena memblokir bot)
+    """
+    if not _firebase_ready or _db is None:
+        return
+    try:
+        _db.collection('users').document(str(user_id)).delete()
+        logger.info(f"[Firebase] User {user_id} dihapus dari Firebase")
+    except Exception as e:
+        logger.error(f"[Firebase] Gagal hapus user {user_id}: {e}")
+
 def sync_user_vip_update(user_id: int, vip_until_iso: Optional[str],
                           vip_limited_until_iso: Optional[str] = None,
                           vip_limited_views: int = 0,

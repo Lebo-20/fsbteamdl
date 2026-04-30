@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import time
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaVideo, InputMediaDocument
+from telegram.error import Forbidden, BadRequest
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
     filters, ContextTypes
@@ -409,10 +410,10 @@ async def delete_previous_message(update: Update, context: ContextTypes.DEFAULT_
         except Exception:
             pass
     # Hapus juga pesan user jika memungkinkan
-    try:
-        await update.message.delete()
-    except Exception:
-        pass
+    # try:
+    #     await update.message.delete()
+    # except Exception:
+    #     pass
 
 def generate_video_code(length: int = 8) -> str:
     """
